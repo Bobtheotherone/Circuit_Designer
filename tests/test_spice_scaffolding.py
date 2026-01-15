@@ -27,7 +27,7 @@ def test_export_spice_netlist_lines():
     assert "R1 1 0 100.0" in netlist
     assert "C2 1 0 1e-06" in netlist
     assert "L3 1 0 0.001" in netlist
-    assert "IIMP 1 0 AC 1" in netlist
+    assert "IIMP 0 1 AC 1" in netlist
     assert ".ac dec 10 1.0 1000.0" in netlist
     assert "wrdata out.csv frequency v(1) v(0)" in netlist
 

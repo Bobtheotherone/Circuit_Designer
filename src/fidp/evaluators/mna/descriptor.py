@@ -34,9 +34,9 @@ def assemble_descriptor_system(circuit: CircuitGraph, port: Port) -> DescriptorS
     Assemble descriptor-form system (G + sC) x = B.
 
     Sign convention:
-    - Port current injection is +1 A flowing from port.pos -> port.neg.
-    - Port voltage is V(pos) - V(neg).
-    - Impedance Z(s) = L^T x where x solves (G + sC) x = B.
+    - Port current is +1 A entering at port.pos and leaving at port.neg.
+    - Port voltage is V(port.pos) - V(port.neg).
+    - Impedance Z(s) = V(pos) - V(neg) = L^T x where x solves (G + sC) x = B.
     """
     if port.pos not in circuit.nodes or port.neg not in circuit.nodes:
         raise CircuitValidationError("Port nodes must exist in circuit.")
@@ -100,6 +100,7 @@ def assemble_descriptor_system(circuit: CircuitGraph, port: Port) -> DescriptorS
     pos_idx = node_idx(port.pos)
     neg_idx = node_idx(port.neg)
 
+    # Inject +1 A into port.pos and extract 1 A from port.neg.
     if pos_idx is not None:
         B[pos_idx, 0] += 1.0
         L[pos_idx, 0] += 1.0
@@ -112,7 +113,7 @@ def assemble_descriptor_system(circuit: CircuitGraph, port: Port) -> DescriptorS
         "node_index": node_index.node_to_index,
         "inductor_count": n_inductors,
         "port": port,
-        "sign_convention": "Z = V(pos) - V(neg) for +1A from pos to neg",
+        "sign_convention": "Z = V(pos) - V(neg) for +1A entering pos and leaving neg",
     }
 
     return DescriptorSystem(G=G.tocsc(), C=C.tocsc(), B=B, L=L, meta=meta)
@@ -122,7 +123,7 @@ def evaluate_impedance_descriptor(system: DescriptorSystem, freqs_hz: np.ndarray
     """
     Evaluate impedance sweep from descriptor system.
 
-    Z(s) = L^T (G + sC)^{-1} B where B encodes a +1A injection.
+    Z(s) = L^T (G + sC)^{-1} B where B encodes the +1A port current.
     """
     freqs_hz = np.asarray(freqs_hz, dtype=float)
     Z = np.zeros_like(freqs_hz, dtype=complex)

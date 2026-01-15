@@ -36,8 +36,9 @@ def export_spice_netlist(
     """
     Export a SPICE netlist with a 1A AC current source between port nodes.
 
-    The netlist writes a CSV with frequency and complex node voltages so that
-    Z(s) = V(pos) - V(neg) for a +1A injection.
+    The current source is oriented from port.neg -> port.pos so that +1A enters
+    the network at port.pos and leaves at port.neg. The netlist writes a CSV
+    with frequency and complex node voltages so that Z(s) = V(pos) - V(neg).
     """
     lines: List[str] = ["* FIDP impedance export"]
     element_index = 1
@@ -57,7 +58,7 @@ def export_spice_netlist(
             )
         element_index += 1
 
-    lines.append(f"IIMP {port.pos} {port.neg} AC 1")
+    lines.append(f"IIMP {port.neg} {port.pos} AC 1")
     lines.append(
         f".ac {analysis_spec.sweep_type} {analysis_spec.points}"
         f" {analysis_spec.f_start_hz} {analysis_spec.f_stop_hz}"
