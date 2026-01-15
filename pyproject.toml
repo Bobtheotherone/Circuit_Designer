@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fidp"
+version = "0.0.0"
+description = "Fractal-Order Impedance Discovery Platform"
+requires-python = ">=3.9"
+dependencies = [
+  "numpy",
+  "scipy",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

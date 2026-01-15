@@ -1,0 +1,4 @@
+- tests/test_mna_impedance.py — covers fidp/evaluators/mna/descriptor.py impedance evaluation and sign conventions.
+- tests/test_recurrence_solver.py — covers fidp/evaluators/recurrence/solver.py fixed-point recurrence convergence.
+- tests/test_prima_reduction.py — covers fidp/evaluators/mor/prima.py PRIMA reduction near expansion points.
+- tests/test_spice_scaffolding.py — covers fidp/evaluators/spice/spice.py netlist export, runners, and CSV parsing.
