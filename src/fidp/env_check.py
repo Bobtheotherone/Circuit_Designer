@@ -5,7 +5,6 @@ from __future__ import annotations
 import importlib
 import importlib.metadata
 import shutil
-import sys
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Tuple
 
@@ -59,14 +58,29 @@ def check_environment() -> EnvCheckResult:
 
     for group, executables in REQUIRED_EXECUTABLE_GROUPS.items():
         if not _any_executable(executables):
-            candidates = ", ".join(executables)
-            errors.append(f"Missing required {group} executable (one of: {candidates}).")
+            if group == "spice":
+                errors.append(_format_spice_missing(executables))
+            else:
+                candidates = ", ".join(executables)
+                errors.append(f"Missing required {group} executable (one of: {candidates}).")
 
     return EnvCheckResult(ok=not errors, errors=errors)
 
 
 def _any_executable(executables: Iterable[str]) -> bool:
     return any(shutil.which(executable) for executable in executables)
+
+
+def _format_spice_missing(executables: Iterable[str]) -> str:
+    candidates = ", ".join(executables)
+    guidance = [
+        f"Missing required spice executable (one of: {candidates}).",
+        "Install ngspice and ensure it is on PATH:",
+        "  Debian/Ubuntu: sudo apt-get update && sudo apt-get install -y ngspice",
+        "  macOS: brew install ngspice",
+        "  Windows: install ngspice and add it to PATH",
+    ]
+    return "\n".join(guidance)
 
 
 def main() -> None:
