@@ -73,6 +73,9 @@ class VectorFitConfig:
 
     n_poles: int
     n_iters: int = 10
+    pole_shift_tol: float = 1e-6
+    min_iters: int = 2
+    early_stop: bool = True
     init_pole_scale: float = 1.0
     weighting: Literal["uniform", "inv_mag", "custom"] = "uniform"
     stabilize_poles: bool = True
@@ -84,6 +87,10 @@ class VectorFitConfig:
             raise ValueError("n_poles must be positive.")
         if self.n_iters <= 0:
             raise ValueError("n_iters must be positive.")
+        if self.min_iters <= 0:
+            raise ValueError("min_iters must be positive.")
+        if self.pole_shift_tol <= 0.0:
+            raise ValueError("pole_shift_tol must be positive.")
         if self.init_pole_scale <= 0.0:
             raise ValueError("init_pole_scale must be positive.")
         if self.ridge_lambda < 0.0:
@@ -164,7 +171,8 @@ def _initial_poles(freq_hz: np.ndarray, cfg: VectorFitConfig) -> np.ndarray:
             poles.append(pole)
             poles.append(np.conj(pole))
     if cfg.n_poles % 2 == 1:
-        poles.append(complex(-cfg.init_pole_scale * w_min, 0.0))
+        w_geom = np.sqrt(w_min * w_max)
+        poles.append(complex(-cfg.init_pole_scale * w_geom, 0.0))
 
     return np.array(poles[: cfg.n_poles], dtype=complex)
 
@@ -181,31 +189,44 @@ def _enforce_conjugate_symmetry(
     poles: np.ndarray,
     residues: np.ndarray | None = None,
     tol: float = 1e-6,
-) -> tuple[np.ndarray, np.ndarray | None]:
+) -> tuple[np.ndarray, np.ndarray | None, list[str]]:
     poles = poles.astype(complex, copy=True)
     residues_out = None if residues is None else residues.astype(complex, copy=True)
 
-    used: set[int] = set()
-    imag = np.imag(poles)
-    indices = np.argsort(imag)
-    for idx in indices:
-        if idx in used:
+    warnings: list[str] = []
+    order = np.lexsort((poles.real, poles.imag))
+    used = np.zeros(poles.size, dtype=bool)
+
+    for idx in order:
+        if used[idx]:
             continue
         pole = poles[idx]
         if abs(pole.imag) <= tol:
             poles[idx] = complex(pole.real, 0.0)
             if residues_out is not None:
                 residues_out[idx] = complex(residues_out[idx].real, 0.0)
-            used.add(idx)
-
-    positive_indices = [idx for idx in indices if poles[idx].imag > tol]
-    for idx in positive_indices:
-        if idx in used:
+            used[idx] = True
             continue
-        target = np.conj(poles[idx])
-        diffs = np.abs(poles - target)
-        diffs[idx] = np.inf
-        partner = int(np.argmin(diffs))
+        if pole.imag < -tol:
+            continue
+
+        target = np.conj(pole)
+        pair_tol = max(1e-8, 1e-3 * abs(pole))
+        candidates = [j for j in order if (not used[j]) and poles[j].imag < -tol]
+        if not candidates:
+            warnings.append(
+                f"No conjugate partner available for pole {pole} within tolerance."
+            )
+            used[idx] = True
+            continue
+        diffs = np.abs(poles[candidates] - target)
+        partner = candidates[int(np.argmin(diffs))]
+        if diffs.min() > pair_tol:
+            warnings.append(
+                f"No conjugate partner within tolerance for pole {pole}."
+            )
+            used[idx] = True
+            continue
 
         p_avg = 0.5 * (poles[idx] + np.conj(poles[partner]))
         poles[idx] = p_avg
@@ -214,9 +235,20 @@ def _enforce_conjugate_symmetry(
             r_avg = 0.5 * (residues_out[idx] + np.conj(residues_out[partner]))
             residues_out[idx] = r_avg
             residues_out[partner] = np.conj(r_avg)
-        used.update({idx, partner})
+        used[idx] = True
+        used[partner] = True
 
-    return poles, residues_out
+    unmatched = np.where((~used) & (np.abs(poles.imag) > tol))[0]
+    for idx in unmatched:
+        warnings.append(f"Unpaired pole with imag component remains: {poles[idx]}.")
+
+    for idx, pole in enumerate(poles):
+        if abs(pole.imag) <= tol:
+            poles[idx] = complex(pole.real, 0.0)
+            if residues_out is not None:
+                residues_out[idx] = complex(residues_out[idx].real, 0.0)
+
+    return poles, residues_out, warnings
 
 
 def _sort_poles_and_residues(
@@ -235,15 +267,21 @@ def _solve_weighted_ls(
     w = np.sqrt(weights).astype(float)
     A_w = A * w[:, None]
     y_w = y * w
-    AhA = A_w.conj().T @ A_w
     if ridge_lambda > 0.0:
-        AhA = AhA + ridge_lambda * np.eye(AhA.shape[0], dtype=AhA.dtype)
+        n_params = A_w.shape[1]
+        ridge = np.sqrt(ridge_lambda) * np.eye(n_params, dtype=A_w.dtype)
+        A_solve = np.vstack([A_w, ridge])
+        y_solve = np.concatenate([y_w, np.zeros(n_params, dtype=y_w.dtype)])
+    else:
+        A_solve = A_w
+        y_solve = y_w
+
     try:
-        x = np.linalg.solve(AhA, A_w.conj().T @ y_w)
+        x = np.linalg.lstsq(A_solve, y_solve, rcond=None)[0]
     except np.linalg.LinAlgError:
-        x = np.linalg.lstsq(A_w, y_w, rcond=None)[0]
+        x = np.linalg.pinv(A_solve) @ y_solve
     try:
-        cond = float(np.linalg.cond(AhA))
+        cond = float(np.linalg.cond(A_solve))
     except np.linalg.LinAlgError:
         cond = float("inf")
     return x, cond
@@ -318,6 +356,9 @@ def vector_fit(
     poles = _initial_poles(freq_hz, cfg)
     poles, _ = _sort_poles_and_residues(poles)
     diagnostics: dict[str, Any] = {"iterations": []}
+    conjugate_warnings: list[str] = []
+    final_pole_shift = float("nan")
+    n_iters_run = 0
 
     for iteration in range(cfg.n_iters):
         residues, c, d, h, cond = _solve_vf_iteration(poles, s, H, weights, cfg.ridge_lambda)
@@ -325,7 +366,8 @@ def vector_fit(
         if cfg.stabilize_poles:
             new_poles = _stabilize_poles(new_poles)
         if cfg.enforce_conjugate_symmetry:
-            new_poles, _ = _enforce_conjugate_symmetry(new_poles)
+            new_poles, _, iter_warnings = _enforce_conjugate_symmetry(new_poles)
+            conjugate_warnings.extend(iter_warnings)
         new_poles, _ = _sort_poles_and_residues(new_poles)
 
         pole_shift = float(np.max(np.abs(new_poles - poles)))
@@ -333,10 +375,20 @@ def vector_fit(
             {"iter": iteration, "cond": cond, "pole_shift": pole_shift}
         )
         poles = new_poles
+        final_pole_shift = pole_shift
+        n_iters_run = iteration + 1
+
+        if (
+            cfg.early_stop
+            and n_iters_run >= cfg.min_iters
+            and pole_shift < cfg.pole_shift_tol
+        ):
+            break
 
     residues, d, h, final_cond = _solve_fixed_poles(poles, s, H, weights, cfg.ridge_lambda)
     if cfg.enforce_conjugate_symmetry:
-        poles, residues = _enforce_conjugate_symmetry(poles, residues)
+        poles, residues, final_warnings = _enforce_conjugate_symmetry(poles, residues)
+        conjugate_warnings.extend(final_warnings)
     if cfg.stabilize_poles:
         poles = _stabilize_poles(poles)
     poles, residues = _sort_poles_and_residues(poles, residues)
@@ -349,6 +401,13 @@ def vector_fit(
 
     diagnostics["final_cond"] = final_cond
     diagnostics["weights"] = cfg.weighting
+    diagnostics["converged"] = bool(
+        (n_iters_run >= cfg.min_iters) and (final_pole_shift < cfg.pole_shift_tol)
+    )
+    diagnostics["n_iters_run"] = int(n_iters_run)
+    diagnostics["final_pole_shift"] = float(final_pole_shift)
+    if conjugate_warnings:
+        diagnostics["conjugate_warnings"] = conjugate_warnings
 
     return VectorFitResult(
         model=model,

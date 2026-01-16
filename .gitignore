@@ -17,6 +17,10 @@ venv/
 ENV/
 env/
 
+# Experiment/artifact outputs (default)
+mlruns/
+artifacts/
+
 # OS junk
 .DS_Store
 Thumbs.db

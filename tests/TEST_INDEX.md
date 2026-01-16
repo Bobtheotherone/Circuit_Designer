@@ -3,7 +3,7 @@
 - tests/test_prima_reduction.py — covers fidp/evaluators/mor/prima.py PRIMA reduction near expansion points.
 - tests/test_spice_scaffolding.py — covers fidp/evaluators/spice/spice.py netlist export, runners, and CSV parsing.
 - tests/test_packaging_pyproject.py — covers pyproject.toml setuptools src-layout configuration.
-- tests/test_fractional_fit.py — covers fidp/modeling/fractional_fit.py CPE fitting and alpha profiling.
-- tests/test_vector_fit.py — covers fidp/modeling/vector_fit.py vector fitting and determinism.
-- tests/test_passivity.py — covers fidp/modeling/passivity.py one-port passivity checks and passivation.
+- tests/test_fractional_fit.py — covers fidp/modeling/fractional_fit.py CPE fitting, phase-wrap handling, and alpha profiling.
+- tests/test_vector_fit.py — covers fidp/modeling/vector_fit.py vector fitting, complex poles, weighting modes, and early stopping.
+- tests/test_passivity.py — covers fidp/modeling/passivity.py one-port passivity checks and passivation for impedance/admittance.
 - tests/test_macromodel_io.py — covers fidp/modeling/macromodel_io.py JSON round-trip and text formatting.

@@ -91,16 +91,21 @@ def fit_cpe(
     if np.any(mag <= 0.0):
         raise ValueError("Z magnitude must be positive for log fitting.")
     log_mag = np.log(mag)
-    phase = np.unwrap(np.angle(Z_sel))
+    phi = np.angle(Z_sel)
+    mean_vec = np.mean(np.exp(1j * phi))
+    phi_ref = float(np.angle(mean_vec)) if abs(mean_vec) >= 1e-12 else float(np.median(phi))
+    phase = phi + 2.0 * np.pi * np.round((phi_ref - phi) / (2.0 * np.pi))
 
     log_omega = np.log(omega)
     n_points = freq_sel.size
 
-    A_mag = np.column_stack([-np.ones(n_points), -log_omega])
+    A_mag = np.column_stack([-np.ones(n_points), -log_omega, np.zeros(n_points)])
     y_mag = log_mag
 
     phase_weight = 1.0
-    A_phase = np.column_stack([np.zeros(n_points), -0.5 * np.pi * np.ones(n_points)])
+    A_phase = np.column_stack(
+        [np.zeros(n_points), -0.5 * np.pi * np.ones(n_points), np.ones(n_points)]
+    )
     y_phase = phase
 
     weights_sqrt = np.sqrt(weights_sel.astype(float))
@@ -112,12 +117,13 @@ def fit_cpe(
     params, *_ = np.linalg.lstsq(A_stack, y_stack, rcond=None)
     log_c_alpha = params[0]
     alpha = params[1]
+    phase_offset = params[2]
     c_alpha = float(np.exp(log_c_alpha))
 
     s = 1j * omega
     Z_fit = 1.0 / (c_alpha * (s**alpha))
     log_mag_fit = np.log(np.abs(Z_fit))
-    phase_fit = np.unwrap(np.angle(Z_fit))
+    phase_fit = np.full_like(phase, phase_offset - 0.5 * np.pi * alpha)
 
     rmse_logmag = float(np.sqrt(np.mean((log_mag - log_mag_fit) ** 2)))
     rmse_phase = float(np.sqrt(np.mean((phase - phase_fit) ** 2)))
@@ -127,12 +133,14 @@ def fit_cpe(
     phase_ripple_deg = float(np.max(phase_deg) - np.min(phase_deg))
 
     alpha_mag = -np.polyfit(log_omega, log_mag, 1)[0]
-    alpha_phase = -np.average(phase, weights=weights_sel) / (0.5 * np.pi)
+    alpha_phase = -np.average(phase - phase_offset, weights=weights_sel) / (0.5 * np.pi)
 
     diagnostics = {
         "alpha_mag": float(alpha_mag),
         "alpha_phase": float(alpha_phase),
         "log_c_alpha": float(log_c_alpha),
+        "phase_offset_rad": float(phase_offset),
+        "phase_ref_rad": float(phi_ref),
         "band_used": band_used,
     }
 

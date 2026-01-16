@@ -41,3 +41,37 @@ def test_passivation_adds_min_offset():
     assert updated.d.real == pytest.approx(model.d.real + expected_delta, rel=1e-8, abs=1e-10)
     assert updated_report.is_passive
     assert updated_report.n_violations == 0
+
+
+def test_passivity_admittance_and_passivation():
+    freqs = np.logspace(1, 4, 50)
+    model = RationalModel(
+        poles=np.array([-60.0]),
+        residues=np.array([12.0]),
+        d=0.5 + 0.0j,
+        h=0.0 + 0.0j,
+        kind="admittance",
+    )
+
+    report = check_oneport_passivity(freqs, model.eval_freq(freqs), "admittance")
+
+    assert report.is_passive
+    assert report.min_real > 0.0
+
+    non_passive = RationalModel(
+        poles=np.array([-60.0]),
+        residues=np.array([12.0]),
+        d=-1.0 + 0.0j,
+        h=0.0 + 0.0j,
+        kind="admittance",
+    )
+
+    bad_report = check_oneport_passivity(freqs, non_passive.eval_freq(freqs), "admittance")
+    assert not bad_report.is_passive
+
+    updated, updated_report = passivate_oneport_min_offset(non_passive, freqs, tol=1e-9)
+    expected_delta = -(bad_report.min_real) + bad_report.tol
+
+    assert updated.d.real == pytest.approx(non_passive.d.real + expected_delta, rel=1e-8, abs=1e-10)
+    assert updated_report.is_passive
+    assert updated_report.details["delta_offset"] == pytest.approx(expected_delta, rel=1e-8, abs=1e-10)

@@ -57,3 +57,19 @@ def test_fit_cpe_rejects_bad_shapes():
 
     with pytest.raises(ValueError):
         fit_cpe(freqs, Z)
+
+
+def test_fit_cpe_phase_wrap_reference():
+    alpha_true = 0.6
+    c_alpha_true = 1.0e-3
+    freqs = np.logspace(1, 4, 80)
+    Z = _make_cpe(alpha_true, c_alpha_true, freqs)
+
+    theta = np.deg2rad(170.0)
+    phase_jitter = np.deg2rad(6.0) * np.sin(np.linspace(0.0, 2.0 * np.pi, freqs.size))
+    Z_shifted = Z * np.exp(-1j * theta) * np.exp(1j * phase_jitter)
+
+    result = fit_cpe(freqs, Z_shifted)
+
+    assert result.alpha == pytest.approx(alpha_true, abs=2e-2)
+    assert result.phase_ripple_deg < 20.0
