@@ -25,6 +25,7 @@ REQUIRED_PYTHON: Dict[str, str] = {
     "pyarrow": ">=12,<17",
     "mlflow": ">=2.12,<3",
     "dvc": ">=3.50,<4",
+    "ray": ">=2.9,<3",
     "yaml": ">=6,<7",
 }
 

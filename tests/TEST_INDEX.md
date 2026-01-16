@@ -20,3 +20,7 @@
 - tests/test_repro_dvc_config.py — covers dvc.yaml/params.yaml reproducibility stage structure and defaults.
 - tests/test_env_check_repro.py — covers fidp/env_check.py MLflow/DVC/YAML import validation paths.
 - tests/test_experiments_pipeline.py — covers fidp/experiments/pipeline.py stage output validation and write path handling.
+- tests/test_parallel_runtime.py — covers fidp/parallel/runtime.py Ray init/shutdown and idempotent context management.
+- tests/test_parallel_executor.py — covers fidp/parallel/executor.py task ordering, error propagation, resource routing, and cache use.
+- tests/test_parallel_cache.py — covers fidp/parallel/cache.py cache actor CRUD and LRU eviction.
+- tests/test_parallel_actor_pool.py — covers fidp/parallel/actor_pool.py actor pool mapping correctness.
