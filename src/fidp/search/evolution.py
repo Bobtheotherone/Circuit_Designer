@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable, List, Optional, Sequence, Tuple, Union
+from typing import Callable, List, Optional, Sequence, Tuple, Union, TYPE_CHECKING
 
 import numpy as np
 
 from fidp.search.features import CircuitGraph, validate_circuit_graph
 from fidp.search.pareto import crowding_distance, pareto_rank
+
+if TYPE_CHECKING:
+    from fidp.metrics.novelty import NoveltyMetrics
 
 
 @dataclass(frozen=True)
@@ -19,6 +22,7 @@ class DesignRecord:
     parameters: np.ndarray
     spec: Optional[str] = None
     global_features: Optional[np.ndarray] = None
+    novelty: Optional["NoveltyMetrics"] = None
     metadata: dict = field(default_factory=dict)
 
 
@@ -175,6 +179,7 @@ def _mutate_design(
         parameters=params,
         spec=design.spec,
         global_features=design.global_features,
+        novelty=design.novelty,
         metadata=dict(design.metadata),
     )
 
@@ -196,6 +201,7 @@ def _crossover_design(
         parameters=params,
         spec=parent_a.spec,
         global_features=parent_a.global_features,
+        novelty=parent_a.novelty,
         metadata=dict(parent_a.metadata),
     )
 

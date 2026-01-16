@@ -14,3 +14,4 @@
 - tests/test_search_evolution.py — covers fidp/search/evolution.py NSGA-II evolution, validity, and determinism.
 - tests/test_search_active_learning.py — covers fidp/search/active_learning.py active learning iteration and caching.
 - tests/test_env_check.py — covers fidp/env_check.py environment verification for required packages and executables.
+- tests/test_novelty_scoring.py — covers fidp/metrics/novelty.py topology/response features, corpus I/O, and CLI scoring.

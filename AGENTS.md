@@ -1,3 +1,4 @@
+````md
 # AGENTS.md — CODEX Operating Manual for FIDP (Fractal-Order Impedance Discovery Platform)
 
 This repository is being built step-by-step from a design document. **Steps 5–14** are the “main steps” that require actual code. Each of those steps will be given to you (CODEX) as an individual prompt with detailed requirements.
@@ -109,6 +110,55 @@ artifacts/
 
 ---
 
+## 0.2 Environment & Dependency Management (mandatory)
+
+### 0.2.1 Single source of truth for setup
+
+* `./scripts/bootstrap.sh` is the canonical, required setup path.
+* If a step introduces or changes ANY dependency (Python package or external executable), you must update bootstrap so a clean machine can reach a working state by running:
+
+  * `./scripts/bootstrap.sh`
+
+### 0.2.2 Dependency source-of-truth and locking
+
+* The dependency source-of-truth is:
+
+  * `requirements/requirements.in` (direct deps)
+  * `requirements/requirements-cpu.lock` + `requirements/requirements-cu128.lock` (resolved locks)
+* `pip freeze` is NOT an acceptable lock strategy.
+* When deps change, you must:
+
+  1. update `requirements/requirements.in`
+  2. update `pyproject.toml` dependency ranges to remain consistent with requirements.in intent
+  3. regenerate BOTH lock files using pip-tools:
+
+     * `pip-compile requirements/requirements.in --output-file requirements/requirements-cpu.lock --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple`
+     * `pip-compile requirements/requirements.in --output-file requirements/requirements-cu128.lock --index-url https://download.pytorch.org/whl/cu128 --extra-index-url https://pypi.org/simple`
+
+### 0.2.3 External executables are required, and must be handled
+
+* Required external tools must be checked by `python -m fidp.env_check`.
+* If an executable can be installed automatically (e.g., ngspice on Ubuntu), bootstrap MUST install it.
+* If an executable cannot be installed automatically (e.g., Xyce), env_check must fail with clear, actionable manual install instructions.
+* No fake/stub executables are allowed to “make checks pass”.
+
+### 0.2.4 Version consistency (never drift)
+
+Whenever you change the minimum Python version OR introduce syntax requiring a newer Python:
+
+* Update **both**:
+
+  * `pyproject.toml` `requires-python`
+  * `scripts/bootstrap.sh` `REQUIRED=...`
+* If these drift, the step is NOT DONE.
+
+### 0.2.5 Tests must not depend on host environment
+
+* Unit tests must be deterministic.
+* Any tests involving executable presence must monkeypatch `shutil.which` (or equivalent) rather than depending on what’s installed on the machine.
+
+---
+
 ## 1) Repository North Star
 
 FIDP is a “discovery factory” for fractal/self-similar impedance networks. We are building:
@@ -140,14 +190,26 @@ When implementing a step, keep all code **modular** and **testable**.
 ### 2.3 No surprises
 
 * Do not introduce heavyweight dependencies without being asked.
-* If a new dependency is required, add it explicitly (e.g., `pyproject.toml` / `requirements.txt`) and justify it in the recap.
+* If a new dependency is required, you MUST:
+
+  * add it to `requirements/requirements.in` and `pyproject.toml` (consistent intent)
+  * regenerate both lock files
+  * ensure `./scripts/bootstrap.sh` installs it
+  * ensure `python -m fidp.env_check` validates it
+* Do not implement optional-import fallbacks for required functionality.
 
 ### 2.4 Security / safety
 
-* Do not fetch from the internet.
+* Do not fetch arbitrary data from the internet.
+* Allowed network actions ONLY for repository setup:
+
+  * `pip` installs from official indexes (PyPI and the official PyTorch index URLs used in bootstrap)
+  * OS package installs strictly for required executables (e.g., `apt-get install ngspice` in bootstrap)
+* Do not curl random tarballs, scrape websites, or clone repos.
 * Do not execute untrusted code.
 * Do not write anything that attempts to exploit the system.
 * Do not touch user SSH config or credentials; only repo-local files.
+* Never add tokens, API keys, or secrets to any tracked file.
 
 ---
 
@@ -185,6 +247,11 @@ Before coding, do a quick repo hygiene check:
 * Ensure `.gitignore` contains the baseline ignores (update only if needed).
 * Ensure no cache/venv files are newly tracked.
 * If any junk is tracked, remove with `git rm -r --cached ...` and include it as part of the step changes.
+* If this step touches dependencies or environment:
+
+  * confirm `pyproject.toml` `requires-python` matches `scripts/bootstrap.sh` `REQUIRED`
+  * confirm the correct lock files exist under `requirements/`
+  * confirm `scripts/bootstrap.sh` is executable
 
 ### Phase A — Understand & plan
 
@@ -361,6 +428,11 @@ A step is **DONE** only when:
 * Targeted tests are added/updated in `tests/`.
 * Relevant tests (per §6) have been run and pass.
 * Repo is GitHub-ready (no tracked venv/cache/secrets).
+* If dependencies/environment were changed:
+
+  * `./scripts/bootstrap.sh` must succeed (or fail only with explicit, actionable instructions)
+  * `python -m fidp.env_check` must pass
+  * locks must be updated and consistent (cpu + cu128)
 * You provide a recap + `GREENLIT: YES` + suggested commit message + push command.
 
 If not done, explicitly say `GREENLIT: NO` and list the blocking issues.
@@ -394,3 +466,7 @@ The step prompts will reference sections from the design doc (evaluator stack, m
 * Report and greenlight decision.
 
 That’s it.
+
+```
+::contentReference[oaicite:0]{index=0}
+```
