@@ -29,16 +29,24 @@ def load_params(path: Path) -> Dict[str, Any]:
     return data or {}
 
 
-def run_stage(stage: str, params_path: Path, output_path: Path | None = None) -> StageResult:
+def run_stage(stage: str, params_path: Path, output_path: str | Path | None = None) -> StageResult:
     """Run a stub pipeline stage and write a JSON summary."""
     params = load_params(params_path)
     stage_params = params.get(stage)
     if stage_params is None:
         raise KeyError(f"Stage '{stage}' not found in {params_path}.")
 
-    resolved_output = Path(output_path or stage_params.get("output", ""))
-    if not resolved_output:
-        raise ValueError("Output path not provided and missing from params.")
+    output_value = output_path if output_path is not None else stage_params.get("output")
+    output_text = str(output_value).strip() if output_value is not None else ""
+    if not output_text or output_text in {".", "./"}:
+        raise ValueError(
+            f"No output path provided; supply --output or set params.yaml: {stage}.output"
+        )
+    resolved_output = Path(output_text)
+    if resolved_output == Path("."):
+        raise ValueError(
+            f"No output path provided; supply --output or set params.yaml: {stage}.output"
+        )
 
     resolved_output.parent.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -74,7 +82,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    run_stage(args.stage, Path(args.params_path), Path(args.output_path) if args.output_path else None)
+    run_stage(args.stage, Path(args.params_path), args.output_path)
     return 0
 
 

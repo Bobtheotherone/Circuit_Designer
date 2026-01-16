@@ -19,3 +19,4 @@
 - tests/test_experiments_smoke_cli.py — covers fidp/experiments/smoke.py reproducibility smoke CLI and MLflow logging.
 - tests/test_repro_dvc_config.py — covers dvc.yaml/params.yaml reproducibility stage structure and defaults.
 - tests/test_env_check_repro.py — covers fidp/env_check.py MLflow/DVC/YAML import validation paths.
+- tests/test_experiments_pipeline.py — covers fidp/experiments/pipeline.py stage output validation and write path handling.
