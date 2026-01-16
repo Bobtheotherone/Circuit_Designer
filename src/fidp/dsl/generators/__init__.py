@@ -23,9 +23,14 @@ _REGISTRY: Dict[str, GeneratorFn] = {
 }
 
 
+def get_generator(name: str) -> Optional[GeneratorFn]:
+    """Return a registered generator function by name."""
+    return _REGISTRY.get(name)
+
+
 def generate(name: str, **kwargs) -> Optional[CircuitIR]:
     """Lookup and invoke a generator by name."""
-    fn = _REGISTRY.get(name)
+    fn = get_generator(name)
     if fn is None:
         return None
     return fn(**kwargs)

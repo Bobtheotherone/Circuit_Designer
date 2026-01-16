@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import difflib
+import inspect
 from typing import Any, Dict, Iterable, List, Optional
 
 from fidp.circuits.ir import CircuitIR, Component, ParamSymbol, ParamValue, PortDef
@@ -129,10 +131,7 @@ def _compile_expr(expr: DSLExpr, bindings: Dict[str, DSLExpr], context: _Compile
         return scale_circuit(_compile_expr(expr.expr, bindings, context), factor)
     if isinstance(expr, GenExpr):
         args = _evaluate_args(expr.args, context)
-        circuit = generators.generate(expr.name, seed=context.seed, **args)
-        if circuit is None:
-            raise DSLValidationError(f"Unknown generator: {expr.name}")
-        return circuit
+        return _invoke_generator(expr.name, args, context.seed)
     if isinstance(expr, RefExpr):
         if expr.name not in bindings:
             raise DSLValidationError(f"Unknown binding: {expr.name}")
@@ -283,6 +282,67 @@ def _evaluate_args(args: Dict[str, ArgValue], context: _CompilerContext) -> Dict
         else:
             evaluated[key] = value
     return evaluated
+
+
+def _invoke_generator(name: str, args: Dict[str, Any], seed: Optional[int]) -> CircuitIR:
+    fn = generators.get_generator(name)
+    if fn is None:
+        raise DSLValidationError(f"Unknown generator: {name}")
+    signature = inspect.signature(fn)
+    normalized = _apply_generator_aliases(args, signature)
+    call_args = dict(normalized)
+    if "seed" in signature.parameters or _accepts_kwargs(signature):
+        call_args["seed"] = seed
+    try:
+        signature.bind(**call_args)
+    except TypeError as exc:
+        raise _generator_arg_error(name, call_args, signature, exc) from None
+    return fn(**call_args)
+
+
+def _apply_generator_aliases(
+    args: Dict[str, Any],
+    signature: inspect.Signature,
+) -> Dict[str, Any]:
+    remapped = dict(args)
+    params = signature.parameters
+    if "r" in remapped and "r_value" in params and "r_value" not in remapped:
+        remapped["r_value"] = remapped.pop("r")
+    if "c" in remapped and "c_value" in params and "c_value" not in remapped:
+        remapped["c_value"] = remapped.pop("c")
+    return remapped
+
+
+def _accepts_kwargs(signature: inspect.Signature) -> bool:
+    return any(param.kind == inspect.Parameter.VAR_KEYWORD for param in signature.parameters.values())
+
+
+def _generator_arg_error(
+    name: str,
+    provided: Dict[str, Any],
+    signature: inspect.Signature,
+    error: TypeError,
+) -> DSLValidationError:
+    expected = [
+        param.name
+        for param in signature.parameters.values()
+        if param.kind in {inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY}
+    ]
+    provided_names = sorted(provided.keys())
+    message_parts = [
+        f"Generator '{name}' argument mismatch.",
+        f"Provided args: {', '.join(provided_names) if provided_names else 'none'}.",
+        f"Expected args: {', '.join(expected) if expected else 'none'}.",
+    ]
+    unknown = sorted(set(provided_names) - set(expected))
+    suggestions = []
+    for key in unknown:
+        matches = difflib.get_close_matches(key, expected, n=1)
+        if matches:
+            suggestions.append(f"{key} -> {matches[0]}")
+    if suggestions:
+        message_parts.append(f"Did you mean: {', '.join(suggestions)}?")
+    return DSLValidationError(" ".join(message_parts))
 
 
 def _merge_symbols(

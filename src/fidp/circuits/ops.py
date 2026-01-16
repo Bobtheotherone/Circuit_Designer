@@ -262,10 +262,31 @@ def scale_circuit(circuit: CircuitIR, factor: float) -> CircuitIR:
     )
 
 
-def flatten_circuit(circuit: CircuitIR, max_depth: Optional[int] = None) -> CircuitIR:
+def flatten_circuit(
+    circuit: CircuitIR,
+    max_depth: Optional[int] = None,
+    max_nodes: Optional[int] = None,
+    max_components: Optional[int] = None,
+) -> CircuitIR:
     """Flatten hierarchical subcircuits into a single circuit."""
+    if max_depth is not None and max_depth < 0:
+        raise CircuitIRValidationError("max_depth must be non-negative.")
+    if max_nodes is not None and max_nodes < 0:
+        raise CircuitIRValidationError("max_nodes must be non-negative.")
+    if max_components is not None and max_components < 0:
+        raise CircuitIRValidationError("max_components must be non-negative.")
     components: List[Component] = []
     subcircuits: List[SubCircuit] = []
+    def check_budget() -> None:
+        if max_components is not None and len(components) > max_components:
+            raise CircuitIRValidationError(f"Flattening exceeds max_components={max_components}.")
+        if max_nodes is not None and len(nodes_seen) > max_nodes:
+            raise CircuitIRValidationError(f"Flattening exceeds max_nodes={max_nodes}.")
+
+    nodes_seen: set[str] = set()
+    for port in circuit.ports:
+        nodes_seen.update((port.pos, port.neg))
+    check_budget()
 
     def resolve_node(node: str, mapping: Dict[str, str], prefix: str) -> str:
         if node in mapping:
@@ -274,14 +295,15 @@ def flatten_circuit(circuit: CircuitIR, max_depth: Optional[int] = None) -> Circ
 
     def flatten(current: CircuitIR, mapping: Dict[str, str], prefix: str, depth: int) -> None:
         for comp in current.components:
-            components.append(
-                replace(
-                    comp,
-                    cid=f"{prefix}{comp.cid}",
-                    node_a=resolve_node(comp.node_a, mapping, prefix),
-                    node_b=resolve_node(comp.node_b, mapping, prefix),
-                )
+            remapped = replace(
+                comp,
+                cid=f"{prefix}{comp.cid}",
+                node_a=resolve_node(comp.node_a, mapping, prefix),
+                node_b=resolve_node(comp.node_b, mapping, prefix),
             )
+            components.append(remapped)
+            nodes_seen.update((remapped.node_a, remapped.node_b))
+            check_budget()
         for idx, sub in enumerate(current.subcircuits):
             sub_prefix = f"{prefix}{sub.name}_{idx}_"
             if max_depth is not None and depth >= max_depth:
@@ -292,6 +314,9 @@ def flatten_circuit(circuit: CircuitIR, max_depth: Optional[int] = None) -> Circ
                     )
                     for key, conn in sub.port_map.items()
                 }
+                for conn in port_map.values():
+                    nodes_seen.update((conn.pos, conn.neg))
+                check_budget()
                 subcircuits.append(
                     SubCircuit(
                         name=sub.name,
@@ -335,4 +360,3 @@ def _merge_symbols(existing: Dict[str, ParamSymbol], incoming: Dict[str, ParamSy
         else:
             merged[key] = symbol
     return merged
-

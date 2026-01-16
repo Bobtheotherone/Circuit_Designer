@@ -1,7 +1,10 @@
 import random
 
+import pytest
+
 from fidp.circuits.canonical import DedupeIndex, are_isomorphic, canonicalize_circuit
-from fidp.circuits.ir import CircuitIR, Component, ParamValue, PortDef
+from fidp.circuits.ir import CircuitIR, Component, ParamValue, PortConnection, PortDef, SubCircuit
+from fidp.errors import CircuitIRValidationError
 
 
 def _relabel_circuit(circuit: CircuitIR, mapping: dict[str, str]) -> CircuitIR:
@@ -100,3 +103,54 @@ def test_symmetric_topology_canonicalization():
     hash_a = canonicalize_circuit(circuit).canonical_hash
     hash_b = canonicalize_circuit(relabeled).canonical_hash
     assert hash_a == hash_b
+
+
+def test_motif_metadata_ignored_for_isomorphism_and_hash():
+    components_a = [
+        Component("R1", "R", "a", "b", ParamValue(100.0), metadata={"motif_id": "alpha"}),
+        Component("C1", "C", "b", "c", ParamValue(1e-6), metadata={"motif_id": "beta"}),
+        Component("R2", "R", "c", "a", ParamValue(200.0), metadata={"motif_id": "gamma"}),
+    ]
+    components_b = [
+        Component("R1", "R", "a", "b", ParamValue(100.0), metadata={"motif_id": "delta"}),
+        Component("C1", "C", "b", "c", ParamValue(1e-6), metadata={"motif_id": "epsilon"}),
+        Component("R2", "R", "c", "a", ParamValue(200.0), metadata={"motif_id": "zeta"}),
+    ]
+    ports = [PortDef("P1", "a", "b"), PortDef("P2", "c", "b")]
+    circuit_a = CircuitIR(name="motif_a", ports=ports, components=components_a)
+    circuit_b = CircuitIR(name="motif_b", ports=ports, components=components_b)
+
+    assert are_isomorphic(circuit_a, circuit_b)
+    hash_a = canonicalize_circuit(circuit_a, mode="continuous").canonical_hash
+    hash_b = canonicalize_circuit(circuit_b, mode="continuous").canonical_hash
+    assert hash_a == hash_b
+
+    dedupe = DedupeIndex()
+    _, is_new = dedupe.add(circuit_a)
+    assert is_new
+    _, is_new = dedupe.add(circuit_b)
+    assert not is_new
+
+
+def test_canonicalize_budget_guard_raises():
+    leaf = CircuitIR(
+        name="leaf",
+        ports=[PortDef("P", "p", "n")],
+        components=[Component("R1", "R", "p", "n", ParamValue(1.0))],
+    )
+    subcircuits = [
+        SubCircuit(
+            name=f"leaf_{idx}",
+            circuit=leaf,
+            port_map={"P": PortConnection(pos="p", neg="n")},
+        )
+        for idx in range(3)
+    ]
+    circuit = CircuitIR(
+        name="parent",
+        ports=[PortDef("P", "p", "n")],
+        subcircuits=subcircuits,
+    )
+
+    with pytest.raises(CircuitIRValidationError, match="max_components"):
+        canonicalize_circuit(circuit, max_components=2)

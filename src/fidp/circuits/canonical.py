@@ -12,6 +12,12 @@ import networkx as nx
 
 from fidp.circuits.ir import CircuitIR, Component
 from fidp.circuits.ops import flatten_circuit
+from fidp.errors import CircuitIRValidationError
+
+
+DEFAULT_MAX_DEPTH = 12
+DEFAULT_MAX_NODES = 5000
+DEFAULT_MAX_COMPONENTS = 10000
 
 
 @dataclass(frozen=True)
@@ -45,13 +51,30 @@ class CanonicalizationCache:
 class DedupeIndex:
     """Incremental deduplication index for CircuitIR objects."""
 
-    def __init__(self, mode: str = "continuous", cache: Optional[CanonicalizationCache] = None) -> None:
+    def __init__(
+        self,
+        mode: str = "continuous",
+        cache: Optional[CanonicalizationCache] = None,
+        max_depth: int | None = DEFAULT_MAX_DEPTH,
+        max_nodes: int | None = DEFAULT_MAX_NODES,
+        max_components: int | None = DEFAULT_MAX_COMPONENTS,
+    ) -> None:
         self.mode = mode
         self.cache = cache or CanonicalizationCache()
+        self.max_depth = max_depth
+        self.max_nodes = max_nodes
+        self.max_components = max_components
         self._seen: Dict[str, CanonicalCircuit] = {}
 
     def add(self, circuit: CircuitIR) -> Tuple[str, bool]:
-        canonical = canonicalize_circuit(circuit, mode=self.mode, cache=self.cache)
+        canonical = canonicalize_circuit(
+            circuit,
+            mode=self.mode,
+            cache=self.cache,
+            max_depth=self.max_depth,
+            max_nodes=self.max_nodes,
+            max_components=self.max_components,
+        )
         if canonical.canonical_hash in self._seen:
             return canonical.canonical_hash, False
         self._seen[canonical.canonical_hash] = canonical
@@ -62,9 +85,12 @@ def canonicalize_circuit(
     circuit: CircuitIR,
     mode: str = "continuous",
     cache: Optional[CanonicalizationCache] = None,
+    max_depth: int | None = DEFAULT_MAX_DEPTH,
+    max_nodes: int | None = DEFAULT_MAX_NODES,
+    max_components: int | None = DEFAULT_MAX_COMPONENTS,
 ) -> CanonicalCircuit:
     """Canonicalize a circuit and return hash/serialization/mapping."""
-    flat = flatten_circuit(circuit)
+    flat = _flatten_for_canonicalization(circuit, max_depth, max_nodes, max_components)
     graph = _build_graph(flat, mode)
     signature = _prehash_signature(graph)
     cache_key = f"{mode}:{signature}"
@@ -91,10 +117,13 @@ def are_isomorphic(
     circuit_a: CircuitIR,
     circuit_b: CircuitIR,
     mode: str = "continuous",
+    max_depth: int | None = DEFAULT_MAX_DEPTH,
+    max_nodes: int | None = DEFAULT_MAX_NODES,
+    max_components: int | None = DEFAULT_MAX_COMPONENTS,
 ) -> bool:
     """Check isomorphism between two circuits using VF2 matching."""
-    graph_a = _build_graph(flatten_circuit(circuit_a), mode)
-    graph_b = _build_graph(flatten_circuit(circuit_b), mode)
+    graph_a = _build_graph(_flatten_for_canonicalization(circuit_a, max_depth, max_nodes, max_components), mode)
+    graph_b = _build_graph(_flatten_for_canonicalization(circuit_b, max_depth, max_nodes, max_components), mode)
     if not _cheap_filter(graph_a, graph_b):
         return False
     node_match = nx.algorithms.isomorphism.categorical_node_match("port_role", ())
@@ -125,7 +154,6 @@ def _build_graph(circuit: CircuitIR, mode: str) -> nx.MultiGraph:
             comp.node_a,
             comp.node_b,
             edge_label=label,
-            motif_id=comp.metadata.get("motif_id"),
         )
 
     return graph
@@ -151,8 +179,6 @@ def _cheap_filter(graph_a: nx.MultiGraph, graph_b: nx.MultiGraph) -> bool:
         return False
     if _edge_histogram(graph_a) != _edge_histogram(graph_b):
         return False
-    if _motif_histogram(graph_a) != _motif_histogram(graph_b):
-        return False
     if _wl_hash(graph_a) != _wl_hash(graph_b):
         return False
     return True
@@ -171,16 +197,6 @@ def _edge_histogram(graph: nx.MultiGraph) -> Tuple[Tuple[str, int], ...]:
     return tuple(sorted(counts.items()))
 
 
-def _motif_histogram(graph: nx.MultiGraph) -> Tuple[Tuple[str, int], ...]:
-    counts: Dict[str, int] = {}
-    for _, _, data in graph.edges(data=True):
-        motif = data.get("motif_id")
-        if motif is None:
-            continue
-        counts[motif] = counts.get(motif, 0) + 1
-    return tuple(sorted(counts.items()))
-
-
 def _prehash_signature(graph: nx.MultiGraph) -> str:
     signature = {
         "nodes": graph.number_of_nodes(),
@@ -188,10 +204,30 @@ def _prehash_signature(graph: nx.MultiGraph) -> str:
         "degree": sorted(dict(graph.degree()).values()),
         "ports": _port_signature(graph),
         "edgesig": _edge_histogram(graph),
-        "motifs": _motif_histogram(graph),
         "wl": _wl_hash(graph),
     }
     return json.dumps(signature, sort_keys=True, separators=(",", ":"))
+
+
+def _flatten_for_canonicalization(
+    circuit: CircuitIR,
+    max_depth: int | None,
+    max_nodes: int | None,
+    max_components: int | None,
+) -> CircuitIR:
+    flat = flatten_circuit(
+        circuit,
+        max_depth=max_depth,
+        max_nodes=max_nodes,
+        max_components=max_components,
+    )
+    if flat.subcircuits:
+        depth = "None" if max_depth is None else str(max_depth)
+        raise CircuitIRValidationError(
+            "Canonicalization requires full flattening; "
+            f"max_depth={depth} stopped expansion."
+        )
+    return flat
 
 
 def _wl_hash(graph: nx.MultiGraph, iterations: int = 3) -> str:
