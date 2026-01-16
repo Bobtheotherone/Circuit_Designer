@@ -1,14 +1,11 @@
 import numpy as np
-import pytest
+import torch
 
 from fidp.search.active_learning import ActiveLearningLoop
 from fidp.search.evolution import DesignRecord
 from fidp.search.features import COMPONENT_TYPES, CircuitGraph, Component, FeatureConfig
-from fidp.search.train_surrogate import TrainingConfig
 from fidp.search.surrogate import SurrogateConfig
-
-
-torch = pytest.importorskip("torch")
+from fidp.search.train_surrogate import TrainingConfig
 
 
 def _feature_dim(config: FeatureConfig) -> int:

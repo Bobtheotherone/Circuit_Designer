@@ -6,19 +6,13 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Sequence
 
 import numpy as np
+import torch
+from torch import nn
+from torch.utils.data import DataLoader
 
 from fidp.search.dataset import CircuitDataset, CircuitSample, collate_fn, move_batch_to_device
 from fidp.search.surrogate import GraphSurrogateModel, SurrogateConfig
 from fidp.search.utils import set_seed
-
-try:
-    import torch
-    from torch import nn
-    from torch.utils.data import DataLoader
-except Exception:  # pragma: no cover - optional dependency
-    torch = None  # type: ignore
-    nn = None  # type: ignore
-    DataLoader = None  # type: ignore
 
 
 @dataclass(frozen=True)
@@ -44,8 +38,6 @@ class TrainingResult:
 
 
 def _resolve_device(device: Optional[str]) -> "torch.device":
-    if torch is None:
-        raise RuntimeError("Torch is required for training.")
     if device:
         return torch.device(device)
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -58,8 +50,6 @@ def train_surrogate(
     training_config: Optional[TrainingConfig] = None,
 ) -> TrainingResult:
     """Train the graph surrogate model on a dataset of circuit samples."""
-    if torch is None:
-        raise RuntimeError("Torch is required for train_surrogate.")
     if not samples:
         raise ValueError("At least one training sample is required.")
 

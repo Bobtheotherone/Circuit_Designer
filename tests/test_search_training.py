@@ -1,13 +1,10 @@
 import numpy as np
-import pytest
+import torch
 
-from fidp.search.features import COMPONENT_TYPES, CircuitGraph, Component, FeatureConfig
-from fidp.search.train_surrogate import TrainingConfig, train_surrogate
-from fidp.search.surrogate import SurrogateConfig
 from fidp.search.dataset import CircuitSample
-
-
-torch = pytest.importorskip("torch")
+from fidp.search.features import COMPONENT_TYPES, CircuitGraph, Component, FeatureConfig
+from fidp.search.surrogate import SurrogateConfig
+from fidp.search.train_surrogate import TrainingConfig, train_surrogate
 
 
 def _feature_dim(config: FeatureConfig) -> int:

@@ -6,32 +6,19 @@ from typing import Optional, Sequence, Tuple
 
 import numpy as np
 
+import torch
+from botorch.acquisition.multi_objective.monte_carlo import (
+    qNoisyExpectedHypervolumeImprovement,
+)
+from botorch.fit import fit_gpytorch_mll
+from botorch.models import SingleTaskGP
+from botorch.models.model_list_gp_regression import ModelListGP
+from botorch.optim import optimize_acqf
+from botorch.sampling.normal import SobolQMCNormalSampler
+from botorch.utils.transforms import normalize
+from gpytorch.mlls.sum_marginal_log_likelihood import SumMarginalLogLikelihood
+
 from fidp.search.utils import set_seed
-
-try:
-    import torch
-    from botorch.acquisition.multi_objective.monte_carlo import (
-        qNoisyExpectedHypervolumeImprovement,
-    )
-    from botorch.fit import fit_gpytorch_mll
-    from botorch.models import SingleTaskGP
-    from botorch.models.model_list_gp_regression import ModelListGP
-    from botorch.optim import optimize_acqf
-    from botorch.sampling.normal import SobolQMCNormalSampler
-    from botorch.utils.multi_objective.box_decomposition import NondominatedPartitioning
-    from botorch.utils.multi_objective.pareto import is_non_dominated
-    from botorch.utils.transforms import normalize
-    from gpytorch.mlls.sum_marginal_log_likelihood import SumMarginalLogLikelihood
-
-    HAS_BOTORCH = True
-except Exception:  # pragma: no cover - optional dependency
-    torch = None  # type: ignore
-    HAS_BOTORCH = False
-
-
-def is_botorch_available() -> bool:
-    """Return True if BoTorch is available."""
-    return HAS_BOTORCH
 
 
 def _validate_bounds(bounds: Sequence[Sequence[float]]) -> np.ndarray:
@@ -80,11 +67,6 @@ def propose_next_botorch(
     constraints: Optional[Sequence[Tuple[np.ndarray, float]]] = None,
 ) -> np.ndarray:
     """Propose next batch using BoTorch qNEHVI."""
-    if not HAS_BOTORCH:
-        raise RuntimeError("BoTorch is not available; use propose_next_random instead.")
-    if torch is None:
-        raise RuntimeError("Torch is required for BoTorch proposals.")
-
     bounds_array = _validate_bounds(bounds)
     dim = bounds_array.shape[1]
 
@@ -118,12 +100,8 @@ def propose_next_botorch(
     mll = SumMarginalLogLikelihood(model.likelihood, model)
     fit_gpytorch_mll(mll)
 
-    pareto_mask = is_non_dominated(train_Y)
-    pareto_Y = train_Y[pareto_mask]
-
-    ref_point = (train_Y.min(dim=0).values - 0.1 * train_Y.std(dim=0)).tolist()
-    partitioning = NondominatedPartitioning(ref_point=ref_point, Y=pareto_Y)
-    sampler = SobolQMCNormalSampler(num_samples=128)
+    ref_point = train_Y.min(dim=0).values - 0.1 * train_Y.std(dim=0)
+    sampler = SobolQMCNormalSampler(sample_shape=torch.Size([128]), seed=seed)
 
     acquisition = qNoisyExpectedHypervolumeImprovement(
         model=model,
@@ -131,7 +109,6 @@ def propose_next_botorch(
         X_baseline=train_X,
         sampler=sampler,
         prune_baseline=True,
-        partitioning=partitioning,
     )
 
     candidates, _ = optimize_acqf(
@@ -141,7 +118,6 @@ def propose_next_botorch(
         num_restarts=5,
         raw_samples=64,
         options={"batch_limit": 5, "maxiter": 200},
-        seed=seed,
     )
 
     candidates = torch.clamp(candidates, 0.0, 1.0)

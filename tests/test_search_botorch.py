@@ -1,11 +1,6 @@
 import numpy as np
-import pytest
 
-from fidp.search.botorch_mobo import (
-    is_botorch_available,
-    propose_next_botorch,
-    propose_next_random,
-)
+from fidp.search.botorch_mobo import propose_next_botorch, propose_next_random
 
 
 def test_random_proposer_bounds_and_determinism() -> None:
@@ -20,9 +15,6 @@ def test_random_proposer_bounds_and_determinism() -> None:
 
 
 def test_botorch_proposer_bounds() -> None:
-    if not is_botorch_available():
-        pytest.skip("BoTorch is not installed")
-
     bounds = [[0.0, 0.0], [1.0, 1.0]]
     X = np.array(
         [

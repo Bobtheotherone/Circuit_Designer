@@ -21,6 +21,9 @@ env/
 mlruns/
 artifacts/
 
+# Packaging artifacts
+*.egg-info/
+
 # OS junk
 .DS_Store
 Thumbs.db

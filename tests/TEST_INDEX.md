@@ -13,3 +13,4 @@
 - tests/test_search_botorch.py — covers fidp/search/botorch_mobo.py random proposer and BoTorch bounds checks.
 - tests/test_search_evolution.py — covers fidp/search/evolution.py NSGA-II evolution, validity, and determinism.
 - tests/test_search_active_learning.py — covers fidp/search/active_learning.py active learning iteration and caching.
+- tests/test_env_check.py — covers fidp/env_check.py environment verification for required packages and executables.

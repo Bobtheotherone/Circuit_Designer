@@ -8,11 +8,15 @@ version = "0.0.0"
 description = "Fractal-Order Impedance Discovery Platform"
 requires-python = ">=3.9"
 dependencies = [
-  "numpy",
-  "scipy",
-  "torch",
-  "botorch",
-  "gpytorch",
+  "numpy>=1.24,<3",
+  "scipy>=1.10,<2",
+  "torch>=2.3,<3",
+  "torchvision>=0.18,<1",
+  "torchaudio>=2.3,<3",
+  "botorch>=0.10,<0.13",
+  "gpytorch>=1.11,<1.14",
+  "packaging>=23,<25",
+  "pytest>=7.4,<9",
 ]
 
 [tool.setuptools]

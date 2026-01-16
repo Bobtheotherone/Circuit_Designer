@@ -6,15 +6,10 @@ from dataclasses import dataclass
 from typing import Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
+import torch
+from torch.utils.data import Dataset
 
 from fidp.search.features import CircuitGraph, FeatureConfig, GraphTensors, extract_graph_features
-
-try:
-    import torch
-    from torch.utils.data import Dataset
-except Exception:  # pragma: no cover - optional dependency
-    torch = None  # type: ignore
-    Dataset = object  # type: ignore
 
 
 @dataclass(frozen=True)
@@ -42,8 +37,6 @@ class CircuitDataset(Dataset):
     """Dataset of circuit graphs and target metrics."""
 
     def __init__(self, samples: Sequence[CircuitSample], config: FeatureConfig) -> None:
-        if torch is None:
-            raise RuntimeError("Torch is required for CircuitDataset.")
         self._samples = list(samples)
         self._config = config
 
@@ -63,8 +56,6 @@ class CircuitDataset(Dataset):
 
 def collate_fn(batch: Iterable[Tuple[GraphTensors, np.ndarray]]) -> GraphBatch:
     """Collate a batch of graph tensors into padded torch tensors."""
-    if torch is None:
-        raise RuntimeError("Torch is required for collate_fn.")
     batch_list = list(batch)
     if not batch_list:
         raise ValueError("Empty batch provided to collate_fn.")

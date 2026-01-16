@@ -9,7 +9,7 @@ from typing import Callable, Dict, Iterable, List, Optional, Protocol, Sequence
 
 import numpy as np
 
-from fidp.search.botorch_mobo import is_botorch_available, propose_next_botorch, propose_next_random
+from fidp.search.botorch_mobo import propose_next_botorch, propose_next_random
 from fidp.search.dataset import CircuitSample
 from fidp.search.evolution import DesignRecord, EvolutionConfig, evolve_population
 from fidp.search.features import FeatureConfig
@@ -105,6 +105,7 @@ class ActiveLearningLoop:
         seed: Optional[int] = None,
         evolution_config: Optional[EvolutionConfig] = None,
         design_factory: Optional[Callable[[np.ndarray], DesignRecord]] = None,
+        proposal_strategy: str = "botorch",
     ) -> ActiveLearningResult:
         """Run a single active learning iteration."""
         set_seed(seed)
@@ -115,7 +116,13 @@ class ActiveLearningLoop:
 
         if bo_bounds is not None and batch_size > 0:
             X, Y = self._collect_observations()
-            if is_botorch_available():
+            if proposal_strategy == "random":
+                candidates = propose_next_random(
+                    bounds=bo_bounds,
+                    batch_size=batch_size,
+                    seed=seed,
+                )
+            elif proposal_strategy == "botorch":
                 candidates = propose_next_botorch(
                     bounds=bo_bounds,
                     X=X,
@@ -125,11 +132,7 @@ class ActiveLearningLoop:
                     objective_signs=self._objective_signs,
                 )
             else:
-                candidates = propose_next_random(
-                    bounds=bo_bounds,
-                    batch_size=batch_size,
-                    seed=seed,
-                )
+                raise ValueError(f"Unknown proposal_strategy: {proposal_strategy}")
             new_designs.extend(self._build_designs_from_candidates(candidates, initial_designs, design_factory))
 
         if evolution_config is not None:

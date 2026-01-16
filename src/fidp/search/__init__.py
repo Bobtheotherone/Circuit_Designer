@@ -1,11 +1,7 @@
 """Search and AI engine utilities for FIDP."""
 
 from fidp.search.active_learning import ActiveLearningLoop
-from fidp.search.botorch_mobo import (
-    is_botorch_available,
-    propose_next_botorch,
-    propose_next_random,
-)
+from fidp.search.botorch_mobo import propose_next_botorch, propose_next_random
 from fidp.search.dataset import CircuitDataset, CircuitSample, GraphBatch, collate_fn
 from fidp.search.evolution import DesignRecord, EvolutionConfig, evolve_population
 from fidp.search.features import (
@@ -22,7 +18,6 @@ from fidp.search.train_surrogate import TrainingConfig, TrainingResult, train_su
 
 __all__ = [
     "ActiveLearningLoop",
-    "is_botorch_available",
     "propose_next_botorch",
     "propose_next_random",
     "CircuitDataset",

@@ -1,13 +1,10 @@
 import numpy as np
-import pytest
+import torch
 
 import fidp.search.features as features
 from fidp.search.dataset import CircuitDataset, CircuitSample, collate_fn
 from fidp.search.surrogate import GraphSurrogateModel, SurrogateConfig
 from fidp.search.utils import set_seed
-
-
-torch = pytest.importorskip("torch")
 
 
 def _make_sample(scale: float) -> CircuitSample:
