@@ -15,7 +15,7 @@ from fidp.circuits.ops import flatten_circuit
 from fidp.errors import CircuitIRValidationError
 
 
-DEFAULT_MAX_DEPTH = 12
+DEFAULT_MAX_DEPTH = 24
 DEFAULT_MAX_NODES = 5000
 DEFAULT_MAX_COMPONENTS = 10000
 

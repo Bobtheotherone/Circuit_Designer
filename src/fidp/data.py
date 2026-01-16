@@ -18,8 +18,16 @@ class ImpedanceSweep:
     meta: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        if self.freqs_hz.shape != self.Z.shape:
-            raise ValueError("freqs_hz and Z must have the same shape.")
+        freqs = np.asarray(self.freqs_hz)
+        Z = np.asarray(self.Z)
+        if freqs.ndim != 1:
+            raise ValueError("freqs_hz must be a 1D array.")
+        if Z.ndim == 1:
+            if freqs.shape != Z.shape:
+                raise ValueError("freqs_hz and Z must have the same shape.")
+        else:
+            if Z.shape[0] != freqs.shape[0]:
+                raise ValueError("Z must have the same leading dimension as freqs_hz.")
 
 
 @dataclass

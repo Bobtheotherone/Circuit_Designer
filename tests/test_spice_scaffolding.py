@@ -55,11 +55,12 @@ def test_ngspice_runner_command_and_parse(tmp_path: Path, monkeypatch):
 
     called = {}
 
-    def fake_run(cmd, cwd=None, capture_output=None, text=None):
+    def fake_run(cmd, cwd=None, capture_output=None, text=None, timeout=None):
         called["cmd"] = cmd
         class Result:
             returncode = 0
             stderr = ""
+            stdout = ""
         return Result()
 
     monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/ngspice")

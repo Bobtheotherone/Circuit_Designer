@@ -37,3 +37,27 @@ class ReductionError(RuntimeError):
 
 class SpiceNetlistError(RuntimeError):
     """Raised when a SPICE netlist fails lint validation."""
+
+
+class EvaluatorError(RuntimeError):
+    """Base class for evaluator failures."""
+
+
+class EvaluatorNotApplicableError(EvaluatorError):
+    """Raised when an evaluator cannot handle a circuit/request."""
+
+
+class EvaluatorConvergenceError(EvaluatorError):
+    """Raised when a solver fails to converge."""
+
+
+class EvaluatorNumericalError(EvaluatorError):
+    """Raised when numerical issues prevent evaluation."""
+
+
+class PassivityViolationError(EvaluatorError):
+    """Raised when passivity checks fail."""
+
+
+class SpiceSimulationError(EvaluatorError):
+    """Raised when a SPICE run fails or produces invalid output."""

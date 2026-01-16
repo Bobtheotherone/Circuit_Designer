@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from fidp.circuits.canonical import canonicalize_circuit
+from fidp.circuits.canonical import canonicalize_circuit, DEFAULT_MAX_DEPTH
 from fidp.circuits.ir_export import circuit_to_json, export_spice_netlist, validate_spice_netlist
 from fidp.dsl import compile_dsl, parse_dsl
 
@@ -24,6 +24,7 @@ def main() -> None:
     group.add_argument("--file", type=Path, help="Path to DSL file")
     parser.add_argument("--out-dir", type=Path, default=Path("artifacts/dsl_demo"))
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--max-depth", type=int, default=DEFAULT_MAX_DEPTH)
     args = parser.parse_args()
 
     if args.file:
@@ -35,7 +36,7 @@ def main() -> None:
 
     program = parse_dsl(text)
     circuit = compile_dsl(program, seed=args.seed)
-    canonical = canonicalize_circuit(circuit)
+    canonical = canonicalize_circuit(circuit, max_depth=args.max_depth)
 
     out_dir: Path = args.out_dir
     out_dir.mkdir(parents=True, exist_ok=True)

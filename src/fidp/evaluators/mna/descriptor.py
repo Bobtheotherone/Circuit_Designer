@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
-import warnings
+from typing import Dict, List, Sequence
 
 import numpy as np
 import scipy.sparse as sp
@@ -29,17 +28,26 @@ def _build_node_index(circuit: CircuitGraph) -> _NodeIndex:
     return _NodeIndex(node_to_index=node_to_index, index_to_node=nodes)
 
 
-def assemble_descriptor_system(circuit: CircuitGraph, port: Port) -> DescriptorSystem:
+def assemble_descriptor_system(
+    circuit: CircuitGraph,
+    ports: Port | Sequence[Port],
+) -> DescriptorSystem:
     """
-    Assemble descriptor-form system (G + sC) x = B.
+    Assemble descriptor-form system (G + sC) x = B for one or more ports.
 
     Sign convention:
     - Port current is +1 A entering at port.pos and leaving at port.neg.
     - Port voltage is V(port.pos) - V(port.neg).
     - Impedance Z(s) = V(pos) - V(neg) = L^T x where x solves (G + sC) x = B.
     """
-    if port.pos not in circuit.nodes or port.neg not in circuit.nodes:
-        raise CircuitValidationError("Port nodes must exist in circuit.")
+    if isinstance(ports, Port):
+        ports = [ports]
+    ports = list(ports)
+    if not ports:
+        raise CircuitValidationError("At least one port is required.")
+    for port in ports:
+        if port.pos not in circuit.nodes or port.neg not in circuit.nodes:
+            raise CircuitValidationError("Port nodes must exist in circuit.")
 
     node_index = _build_node_index(circuit)
     n_nodes = len(node_index.index_to_node)
@@ -94,25 +102,28 @@ def assemble_descriptor_system(circuit: CircuitGraph, port: Port) -> DescriptorS
         C[current_idx, current_idx] -= ind.inductance_h
 
     # Build excitation and observation matrices.
-    B = np.zeros((n_unknowns, 1), dtype=float)
-    L = np.zeros((n_unknowns, 1), dtype=float)
+    n_ports = len(ports)
+    B = np.zeros((n_unknowns, n_ports), dtype=float)
+    L = np.zeros((n_unknowns, n_ports), dtype=float)
 
-    pos_idx = node_idx(port.pos)
-    neg_idx = node_idx(port.neg)
+    for col, port in enumerate(ports):
+        pos_idx = node_idx(port.pos)
+        neg_idx = node_idx(port.neg)
 
-    # Inject +1 A into port.pos and extract 1 A from port.neg.
-    if pos_idx is not None:
-        B[pos_idx, 0] += 1.0
-        L[pos_idx, 0] += 1.0
-    if neg_idx is not None:
-        B[neg_idx, 0] -= 1.0
-        L[neg_idx, 0] -= 1.0
+        # Inject +1 A into port.pos and extract 1 A from port.neg.
+        if pos_idx is not None:
+            B[pos_idx, col] += 1.0
+            L[pos_idx, col] += 1.0
+        if neg_idx is not None:
+            B[neg_idx, col] -= 1.0
+            L[neg_idx, col] -= 1.0
 
     meta = {
         "ground": circuit.ground,
         "node_index": node_index.node_to_index,
         "inductor_count": n_inductors,
-        "port": port,
+        "ports": ports,
+        "n_ports": n_ports,
         "sign_convention": "Z = V(pos) - V(neg) for +1A entering pos and leaving neg",
     }
 
@@ -126,7 +137,11 @@ def evaluate_impedance_descriptor(system: DescriptorSystem, freqs_hz: np.ndarray
     Z(s) = L^T (G + sC)^{-1} B where B encodes the +1A port current.
     """
     freqs_hz = np.asarray(freqs_hz, dtype=float)
-    Z = np.zeros_like(freqs_hz, dtype=complex)
+    n_ports = system.B.shape[1] if system.B.ndim == 2 else 1
+    if n_ports == 1:
+        Z = np.zeros_like(freqs_hz, dtype=complex)
+    else:
+        Z = np.zeros((freqs_hz.size, n_ports, n_ports), dtype=complex)
     G = system.G
     C = system.C
     B = system.B
@@ -136,14 +151,17 @@ def evaluate_impedance_descriptor(system: DescriptorSystem, freqs_hz: np.ndarray
         s = 1j * 2.0 * np.pi * freq
         A = G + s * C
         try:
-            with warnings.catch_warnings():
-                warnings.simplefilter("error", spla.MatrixRankWarning)
-                x = spla.spsolve(A, B[:, 0])
-        except (spla.MatrixRankWarning, RuntimeError, ValueError) as exc:
+            lu = spla.splu(A.tocsc())
+            x = lu.solve(B)
+        except Exception as exc:
             raise SingularCircuitError("Descriptor system is singular.") from exc
         if np.any(~np.isfinite(x)):
             raise SingularCircuitError("Descriptor system solution is invalid.")
-        Z[idx] = L[:, 0].T @ x
+        Z_slice = L.T @ x
+        if n_ports == 1:
+            Z[idx] = Z_slice[0, 0]
+        else:
+            Z[idx] = Z_slice
 
     meta = {"descriptor_meta": system.meta}
     return ImpedanceSweep(freqs_hz=freqs_hz, Z=Z, meta=meta)

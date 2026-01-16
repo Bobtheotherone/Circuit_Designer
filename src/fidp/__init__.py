@@ -11,6 +11,12 @@ from fidp.errors import (
     SpiceNotAvailableError,
     ReductionError,
     SpiceNetlistError,
+    EvaluatorError,
+    EvaluatorNotApplicableError,
+    EvaluatorConvergenceError,
+    EvaluatorNumericalError,
+    PassivityViolationError,
+    SpiceSimulationError,
 )
 
 __all__ = [
@@ -30,4 +36,10 @@ __all__ = [
     "SpiceNotAvailableError",
     "ReductionError",
     "SpiceNetlistError",
+    "EvaluatorError",
+    "EvaluatorNotApplicableError",
+    "EvaluatorConvergenceError",
+    "EvaluatorNumericalError",
+    "PassivityViolationError",
+    "SpiceSimulationError",
 ]

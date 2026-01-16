@@ -1,9 +1,9 @@
-"""SPICE netlist export and runner scaffolding."""
+"""SPICE netlist export and runner utilities."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List
+from typing import Dict, List, Sequence
 import csv
 import shutil
 import subprocess
@@ -12,9 +12,10 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 
-from fidp.circuits import CircuitGraph, Port, Resistor, Capacitor, Inductor
+from fidp.circuits import CircuitGraph, CircuitIR, Port, PortDef, Resistor, Capacitor, Inductor
+from fidp.circuits.ir_export import export_spice_netlist as export_ir_netlist
 from fidp.data import ImpedanceSweep
-from fidp.errors import SpiceNotAvailableError
+from fidp.errors import SpiceNotAvailableError, SpiceSimulationError
 
 
 @dataclass(frozen=True)
@@ -88,35 +89,41 @@ def export_spice_netlist(
 
 def parse_spice_csv(path: Path, port: Port) -> ImpedanceSweep:
     """Parse a CSV output containing frequency and complex node voltages."""
+    freqs_arr, node_voltages = parse_spice_csv_nodes(path, [port.pos, port.neg])
+    vpos_arr = node_voltages[port.pos]
+    vneg_arr = node_voltages[port.neg]
+    Z = vpos_arr - vneg_arr
+    return ImpedanceSweep(freqs_hz=freqs_arr, Z=Z, meta={"source": str(path)})
+
+
+def parse_spice_csv_nodes(path: Path, nodes: Sequence[str]) -> tuple[np.ndarray, Dict[str, np.ndarray]]:
+    """Parse CSV output with voltages for multiple nodes."""
+    node_set = {node.lower(): node for node in nodes}
+    voltages: Dict[str, List[complex]] = {node: [] for node in nodes}
+    freqs: List[float] = []
+
     with path.open("r", newline="") as handle:
         reader = csv.reader(handle)
         header = next(reader)
         header_lower = [col.strip().lower() for col in header]
-
         freq_idx = _find_column(header_lower, ["frequency", "freq"])
-        vpos_real_idx, vpos_imag_idx = _find_complex_columns(header_lower, port.pos)
-        vneg_real_idx, vneg_imag_idx = _find_complex_columns(header_lower, port.neg)
-
-        freqs: List[float] = []
-        vpos: List[complex] = []
-        vneg: List[complex] = []
+        column_map = _resolve_node_columns(header_lower, node_set)
 
         for row in reader:
             if not row:
                 continue
             freqs.append(float(row[freq_idx]))
-            vpos.append(
-                float(row[vpos_real_idx]) + 1j * float(row[vpos_imag_idx])
-            )
-            vneg.append(
-                float(row[vneg_real_idx]) + 1j * float(row[vneg_imag_idx])
-            )
+            for node, (real_idx, imag_idx) in column_map.items():
+                if imag_idx is None:
+                    voltages[node].append(_parse_complex_value(row[real_idx]))
+                else:
+                    voltages[node].append(
+                        float(row[real_idx]) + 1j * float(row[imag_idx])
+                    )
 
     freqs_arr = np.asarray(freqs, dtype=float)
-    vpos_arr = np.asarray(vpos, dtype=complex)
-    vneg_arr = np.asarray(vneg, dtype=complex)
-    Z = vpos_arr - vneg_arr
-    return ImpedanceSweep(freqs_hz=freqs_arr, Z=Z, meta={"source": str(path)})
+    node_arrays = {node: np.asarray(values, dtype=complex) for node, values in voltages.items()}
+    return freqs_arr, node_arrays
 
 
 def _find_column(header: List[str], candidates: List[str]) -> int:
@@ -139,6 +146,72 @@ def _find_complex_columns(header: List[str], node: str) -> tuple[int, int]:
     raise ValueError("Complex voltage columns not found in SPICE CSV header.")
 
 
+def _resolve_node_columns(header: List[str], node_set: Dict[str, str]) -> Dict[str, tuple[int, int | None]]:
+    column_map: Dict[str, tuple[int, int | None]] = {}
+    for node_lower, node in node_set.items():
+        try:
+            real_idx, imag_idx = _find_complex_columns(header, node_lower)
+            column_map[node] = (real_idx, imag_idx)
+            continue
+        except ValueError:
+            pass
+        for idx, name in enumerate(header):
+            if name.startswith(f"v({node_lower})"):
+                column_map[node] = (idx, None)
+                break
+        if node not in column_map:
+            raise ValueError(f"Voltage columns not found for node {node}.")
+    return column_map
+
+
+def _parse_complex_value(token: str) -> complex:
+    value = token.strip()
+    if "," in value:
+        real_str, imag_str = value.split(",", maxsplit=1)
+        return complex(float(real_str), float(imag_str))
+    if value.endswith("j"):
+        return complex(value)
+    return complex(float(value), 0.0)
+
+
+def export_spice_netlist_ir(
+    circuit: CircuitIR,
+    port: PortDef,
+    analysis_spec: AcAnalysisSpec,
+    output_csv: str = "spice_output.csv",
+    simulator: str = "ngspice",
+    value_mode: str = "snapped",
+    measure_nodes: Sequence[str] | None = None,
+) -> str:
+    """Export a CircuitIR impedance netlist with AC analysis."""
+    base = export_ir_netlist(circuit, title=circuit.name, canonicalize=True, value_mode=value_mode)
+    lines = [line for line in base.splitlines() if line.strip() and line.strip().lower() != ".end"]
+    lines.append(f"IIMP {port.neg} {port.pos} AC 1")
+    lines.append(
+        f".ac {analysis_spec.sweep_type} {analysis_spec.points}"
+        f" {analysis_spec.f_start_hz} {analysis_spec.f_stop_hz}"
+    )
+    nodes = list(measure_nodes) if measure_nodes is not None else [port.pos, port.neg]
+    if simulator.lower() == "ngspice":
+        lines.extend(
+            [
+                ".control",
+                "set filetype=csv",
+                "set noaskquit",
+                "run",
+                f"wrdata {output_csv} frequency " + " ".join(f"v({node})" for node in nodes),
+                "quit",
+                ".endc",
+            ]
+        )
+    else:
+        lines.append(
+            f".print ac format=csv file={output_csv} " + " ".join(f"v({node})" for node in nodes)
+        )
+    lines.append(".end")
+    return "\n".join(lines) + "\n"
+
+
 class SpiceRunner(ABC):
     """Base class for running SPICE simulations."""
 
@@ -157,7 +230,41 @@ class SpiceRunner(ABC):
     @abstractmethod
     def build_command(self, netlist_path: Path, output_csv: str) -> List[str]:
         """Construct the SPICE command for the given netlist path."""
-        pass
+        ...
+
+    def _run_netlist(
+        self,
+        netlist_text: str,
+        workdir: Path,
+        output_csv: str,
+        timeout_s: float | None = None,
+    ) -> tuple[Path, str, str]:
+        workdir.mkdir(parents=True, exist_ok=True)
+        netlist_path = workdir / "circuit.cir"
+        netlist_path.write_text(netlist_text, encoding="utf-8")
+
+        exe = self.resolve_executable()
+        cmd = [exe, *self.build_command(netlist_path, output_csv)]
+        try:
+            result = subprocess.run(
+                cmd,
+                cwd=workdir,
+                capture_output=True,
+                text=True,
+                timeout=timeout_s,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise SpiceSimulationError(f"{self.name} timed out.") from exc
+
+        if result.returncode != 0:
+            raise SpiceSimulationError(
+                f"{self.name} failed with code {result.returncode}: {result.stderr}"
+            )
+
+        output_path = workdir / output_csv
+        if not output_path.exists():
+            raise SpiceSimulationError(f"{self.name} did not produce output file {output_csv}.")
+        return output_path, result.stdout, result.stderr
 
     def run(
         self,
@@ -165,19 +272,25 @@ class SpiceRunner(ABC):
         port: Port,
         workdir: Path,
         output_csv: str = "spice_output.csv",
+        timeout_s: float | None = None,
     ) -> ImpedanceSweep:
-        workdir.mkdir(parents=True, exist_ok=True)
-        netlist_path = workdir / "circuit.cir"
-        netlist_path.write_text(netlist_text, encoding="utf-8")
-
-        exe = self.resolve_executable()
-        cmd = self.build_command(netlist_path, output_csv)
-        result = subprocess.run([exe, *cmd], cwd=workdir, capture_output=True, text=True)
-        if result.returncode != 0:
-            raise RuntimeError(f"{self.name} failed: {result.stderr}")
-
-        output_path = workdir / output_csv
+        output_path, _, _ = self._run_netlist(
+            netlist_text, workdir, output_csv, timeout_s=timeout_s
+        )
         return parse_spice_csv(output_path, port)
+
+    def run_nodes(
+        self,
+        netlist_text: str,
+        nodes: Sequence[str],
+        workdir: Path,
+        output_csv: str = "spice_output.csv",
+        timeout_s: float | None = None,
+    ) -> tuple[np.ndarray, Dict[str, np.ndarray]]:
+        output_path, _, _ = self._run_netlist(
+            netlist_text, workdir, output_csv, timeout_s=timeout_s
+        )
+        return parse_spice_csv_nodes(output_path, nodes)
 
 
 class NgSpiceRunner(SpiceRunner):

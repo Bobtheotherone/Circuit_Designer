@@ -33,8 +33,10 @@ REQUIRED_PYTHON: Dict[str, str] = {
 }
 
 REQUIRED_EXECUTABLE_GROUPS: Dict[str, Tuple[str, ...]] = {
-    "spice": ("ngspice", "Xyce", "xyce"),
+    "spice": ("ngspice",),
+    "xyce": ("Xyce", "xyce"),
 }
+OPTIONAL_EXECUTABLES: Dict[str, Tuple[str, ...]] = {}
 
 DISTRIBUTION_OVERRIDES: Dict[str, str] = {
     "yaml": "PyYAML",
@@ -45,11 +47,13 @@ DISTRIBUTION_OVERRIDES: Dict[str, str] = {
 class EnvCheckResult:
     ok: bool
     errors: List[str]
+    warnings: List[str]
 
 
 def check_environment() -> EnvCheckResult:
     """Check required Python packages and external executables."""
     errors: List[str] = []
+    warnings: List[str] = []
 
     for module, spec in REQUIRED_PYTHON.items():
         try:
@@ -73,11 +77,18 @@ def check_environment() -> EnvCheckResult:
         if not _any_executable(executables):
             if group == "spice":
                 errors.append(_format_spice_missing(executables))
+            elif group == "xyce":
+                errors.append(_format_xyce_missing(executables))
             else:
                 candidates = ", ".join(executables)
                 errors.append(f"Missing required {group} executable (one of: {candidates}).")
 
-    return EnvCheckResult(ok=not errors, errors=errors)
+    for name, executables in OPTIONAL_EXECUTABLES.items():
+        if not _any_executable(executables):
+            candidates = ", ".join(executables)
+            warnings.append(f"Optional executable missing for {name} (one of: {candidates}).")
+
+    return EnvCheckResult(ok=not errors, errors=errors, warnings=warnings)
 
 
 def _any_executable(executables: Iterable[str]) -> bool:
@@ -96,13 +107,27 @@ def _format_spice_missing(executables: Iterable[str]) -> str:
     return "\n".join(guidance)
 
 
+def _format_xyce_missing(executables: Iterable[str]) -> str:
+    candidates = ", ".join(executables)
+    guidance = [
+        f"Missing required Xyce executable (one of: {candidates}).",
+        "Install Xyce manually and ensure it is on PATH:",
+        "  https://xyce.sandia.gov/",
+    ]
+    return "\n".join(guidance)
+
+
 def main() -> None:
     result = check_environment()
     if result.ok:
         print("Environment check passed.")
+        for warning in result.warnings:
+            print(f"WARNING: {warning}")
         return
     for error in result.errors:
         print(f"ERROR: {error}")
+    for warning in result.warnings:
+        print(f"WARNING: {warning}")
     raise SystemExit(1)
 
 

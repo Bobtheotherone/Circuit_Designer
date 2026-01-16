@@ -78,7 +78,7 @@ print("torch.cuda.is_available() True")
 PY
 fi
 
-if ! command -v ngspice >/dev/null 2>&1 && ! command -v Xyce >/dev/null 2>&1 && ! command -v xyce >/dev/null 2>&1; then
+if ! command -v ngspice >/dev/null 2>&1; then
   if command -v sudo >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; then
     echo "ngspice not found; attempting to install via apt."
     if ! sudo apt-get update; then

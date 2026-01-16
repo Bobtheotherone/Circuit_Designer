@@ -71,6 +71,7 @@ def _fractal_ladder_recursive(
             metadata={
                 "generator": "fractal_ladder",
                 "recursion_depth": 0,
+                "scale": scale,
                 "seed": seed,
                 "motif_ids": ["fractal"],
             },
@@ -118,6 +119,7 @@ def _fractal_ladder_recursive(
         metadata={
             "generator": "fractal_ladder",
             "recursion_depth": order,
+            "scale": scale,
             "seed": seed,
             "motif_ids": ["fractal"],
         },
