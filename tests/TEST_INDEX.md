@@ -7,3 +7,9 @@
 - tests/test_vector_fit.py — covers fidp/modeling/vector_fit.py vector fitting, complex poles, weighting modes, and early stopping.
 - tests/test_passivity.py — covers fidp/modeling/passivity.py one-port passivity checks and passivation for impedance/admittance.
 - tests/test_macromodel_io.py — covers fidp/modeling/macromodel_io.py JSON round-trip and text formatting.
+- tests/test_search_features.py — covers fidp/search/features.py graph feature extraction and validation.
+- tests/test_search_surrogate.py — covers fidp/search/surrogate.py forward pass shapes and determinism.
+- tests/test_search_training.py — covers fidp/search/train_surrogate.py training loop smoke tests.
+- tests/test_search_botorch.py — covers fidp/search/botorch_mobo.py random proposer and BoTorch bounds checks.
+- tests/test_search_evolution.py — covers fidp/search/evolution.py NSGA-II evolution, validity, and determinism.
+- tests/test_search_active_learning.py — covers fidp/search/active_learning.py active learning iteration and caching.
