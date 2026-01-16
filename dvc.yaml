@@ -1,0 +1,107 @@
+stages:
+  generate_candidates:
+    cmd: python -m fidp.experiments.pipeline --stage generate_candidates --params params.yaml --output data/pipeline/generate_candidates.json
+    deps:
+      - src/fidp/experiments/pipeline.py
+      - params.yaml
+    params:
+      - generate_candidates
+    outs:
+      - data/pipeline/generate_candidates.json
+
+  snap_components:
+    cmd: python -m fidp.experiments.pipeline --stage snap_components --params params.yaml --output data/pipeline/snap_components.json
+    deps:
+      - src/fidp/experiments/pipeline.py
+      - params.yaml
+      - data/pipeline/generate_candidates.json
+    params:
+      - snap_components
+    outs:
+      - data/pipeline/snap_components.json
+
+  evaluate_fast:
+    cmd: python -m fidp.experiments.pipeline --stage evaluate_fast --params params.yaml --output data/pipeline/evaluate_fast.json
+    deps:
+      - src/fidp/experiments/pipeline.py
+      - params.yaml
+      - data/pipeline/snap_components.json
+    params:
+      - evaluate_fast
+    outs:
+      - data/pipeline/evaluate_fast.json
+
+  train_surrogate:
+    cmd: python -m fidp.experiments.pipeline --stage train_surrogate --params params.yaml --output data/pipeline/train_surrogate.json
+    deps:
+      - src/fidp/experiments/pipeline.py
+      - params.yaml
+      - data/pipeline/evaluate_fast.json
+    params:
+      - train_surrogate
+    outs:
+      - data/pipeline/train_surrogate.json
+
+  propose_next:
+    cmd: python -m fidp.experiments.pipeline --stage propose_next --params params.yaml --output data/pipeline/propose_next.json
+    deps:
+      - src/fidp/experiments/pipeline.py
+      - params.yaml
+      - data/pipeline/train_surrogate.json
+    params:
+      - propose_next
+    outs:
+      - data/pipeline/propose_next.json
+
+  simulate_spice:
+    cmd: python -m fidp.experiments.pipeline --stage simulate_spice --params params.yaml --output data/pipeline/simulate_spice.json
+    deps:
+      - src/fidp/experiments/pipeline.py
+      - params.yaml
+      - data/pipeline/propose_next.json
+    params:
+      - simulate_spice
+    outs:
+      - data/pipeline/simulate_spice.json
+
+  robustness_mc:
+    cmd: python -m fidp.experiments.pipeline --stage robustness_mc --params params.yaml --output data/pipeline/robustness_mc.json
+    deps:
+      - src/fidp/experiments/pipeline.py
+      - params.yaml
+      - data/pipeline/simulate_spice.json
+    params:
+      - robustness_mc
+    outs:
+      - data/pipeline/robustness_mc.json
+
+  rank_pareto:
+    cmd: python -m fidp.experiments.pipeline --stage rank_pareto --params params.yaml --output data/pipeline/rank_pareto.json
+    deps:
+      - src/fidp/experiments/pipeline.py
+      - params.yaml
+      - data/pipeline/robustness_mc.json
+    params:
+      - rank_pareto
+    outs:
+      - data/pipeline/rank_pareto.json
+
+  report_topk:
+    cmd: python -m fidp.experiments.pipeline --stage report_topk --params params.yaml --output data/pipeline/report_topk.json
+    deps:
+      - src/fidp/experiments/pipeline.py
+      - params.yaml
+      - data/pipeline/rank_pareto.json
+    params:
+      - report_topk
+    outs:
+      - data/pipeline/report_topk.json
+
+  repro_smoke:
+    cmd: python -m fidp.experiments.smoke --output data/repro_smoke/manifest.json --stage repro_smoke
+    deps:
+      - src/fidp/experiments/smoke.py
+    params:
+      - repro_smoke
+    outs:
+      - data/repro_smoke/manifest.json

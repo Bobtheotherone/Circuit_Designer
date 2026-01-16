@@ -2,6 +2,8 @@ import json
 from pathlib import Path
 
 import numpy as np
+import pyarrow.parquet as pq
+import pyarrow as pa
 import pytest
 
 from fidp.circuits.core import Port
@@ -195,6 +197,66 @@ def test_cli_jsonl_round_trip(tmp_path: Path) -> None:
         assert 0.0 <= rec["topology_novelty"] <= 1.0
         assert 0.0 <= rec["response_novelty"] <= 1.0
         assert 0.0 <= rec["overall_novelty"] <= 1.0
+
+    loaded = NoveltyCorpus.load(str(corpus_path), NoveltyConfig())
+    assert loaded.size == 2
+
+
+def test_cli_parquet_round_trip(tmp_path: Path) -> None:
+    graph_payload = {
+        "ground": "0",
+        "components": [
+            {"kind": "R", "node_a": "1", "node_b": "2", "value": 50.0},
+            {"kind": "L", "node_a": "2", "node_b": "3", "value": 1e-3},
+        ],
+        "ports": [{"pos": "1", "neg": "0"}],
+    }
+    freq, Z = _make_cpe_response(alpha=0.7, c_alpha=5e-4, n_points=16)
+    z_pairs = np.column_stack([Z.real, Z.imag]).tolist()
+
+    records = [
+        {
+            "design_id": "p1",
+            "graph": json.dumps(graph_payload),
+            "freq_hz": freq.tolist(),
+            "Z": z_pairs,
+        },
+        {
+            "design_id": "p2",
+            "graph": json.dumps(graph_payload),
+            "freq_hz": freq.tolist(),
+            "Z": z_pairs,
+        },
+    ]
+
+    input_path = tmp_path / "designs.parquet"
+    output_path = tmp_path / "out.parquet"
+    corpus_path = tmp_path / "corpus.npz"
+
+    table = pa.Table.from_pylist(records)
+    pq.write_table(table, input_path)
+
+    result = novelty_main(
+        [
+            "--input",
+            str(input_path),
+            "--output",
+            str(output_path),
+            "--corpus",
+            str(corpus_path),
+            "--update-corpus",
+        ]
+    )
+
+    assert result == 0
+
+    out_table = pq.read_table(output_path)
+    out_rows = out_table.to_pylist()
+    assert len(out_rows) == 2
+    for row in out_rows:
+        assert 0.0 <= row["topology_novelty"] <= 1.0
+        assert 0.0 <= row["response_novelty"] <= 1.0
+        assert 0.0 <= row["overall_novelty"] <= 1.0
 
     loaded = NoveltyCorpus.load(str(corpus_path), NoveltyConfig())
     assert loaded.size == 2

@@ -9,6 +9,8 @@ import os
 from typing import Any, Iterable, Optional, Sequence
 
 import numpy as np
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 from fidp.circuits.core import Port
 from fidp.metrics.novelty import (
@@ -43,8 +45,6 @@ def _load_config(path: Optional[str]) -> NoveltyConfig:
 
 
 def _read_jsonl(path: str) -> list[dict[str, Any]]:
-    if path.endswith(".parquet"):
-        raise ValueError("Parquet input is not supported; use JSONL.")
     records: list[dict[str, Any]] = []
     with open(path, "r", encoding="utf-8") as handle:
         for line in handle:
@@ -55,12 +55,61 @@ def _read_jsonl(path: str) -> list[dict[str, Any]]:
     return records
 
 
+def _read_parquet(path: str) -> list[dict[str, Any]]:
+    table = pq.read_table(path)
+    return table.to_pylist()
+
+
+def _read_records(path: str) -> list[dict[str, Any]]:
+    ext = os.path.splitext(path)[1].lower()
+    if ext == ".jsonl":
+        return _read_jsonl(path)
+    if ext == ".parquet":
+        return _read_parquet(path)
+    raise ValueError("Input must be .jsonl or .parquet.")
+
+
 def _write_jsonl(path: str, records: Iterable[dict[str, Any]]) -> None:
-    if path.endswith(".parquet"):
-        raise ValueError("Parquet output is not supported; use JSONL.")
     with open(path, "w", encoding="utf-8") as handle:
         for record in records:
             handle.write(json.dumps(record, ensure_ascii=True) + "\n")
+
+
+def _write_parquet(path: str, records: Iterable[dict[str, Any]]) -> None:
+    rows = list(records)
+    if not rows:
+        table = pa.Table.from_pydict(
+            {
+                "design_id": [],
+                "topology_novelty": [],
+                "response_novelty": [],
+                "overall_novelty": [],
+            }
+        )
+        pq.write_table(table, path)
+        return
+    has_flags = any("flags" in row for row in rows)
+    data = {
+        "design_id": [row.get("design_id") for row in rows],
+        "topology_novelty": [row.get("topology_novelty") for row in rows],
+        "response_novelty": [row.get("response_novelty") for row in rows],
+        "overall_novelty": [row.get("overall_novelty") for row in rows],
+    }
+    if has_flags:
+        data["flags"] = [row.get("flags") for row in rows]
+    table = pa.Table.from_pydict(data)
+    pq.write_table(table, path)
+
+
+def _write_records(path: str, records: Iterable[dict[str, Any]]) -> None:
+    ext = os.path.splitext(path)[1].lower()
+    if ext == ".jsonl":
+        _write_jsonl(path, records)
+        return
+    if ext == ".parquet":
+        _write_parquet(path, records)
+        return
+    raise ValueError("Output must be .jsonl or .parquet.")
 
 
 def _parse_graph(payload: dict[str, Any]) -> CircuitGraph:
@@ -97,8 +146,18 @@ def _parse_impedance(record: dict[str, Any]) -> np.ndarray:
     raise ValueError("Impedance data must include Z or Z_real/Z_imag.")
 
 
+def _coerce_graph_payload(entry: Any) -> dict[str, Any]:
+    if isinstance(entry, str):
+        return json.loads(entry)
+    if isinstance(entry, (bytes, bytearray)):
+        return json.loads(entry.decode("utf-8"))
+    if isinstance(entry, dict):
+        return entry
+    raise ValueError("graph must be a JSON string or dict.")
+
+
 def _load_designs(path: str) -> list[dict[str, Any]]:
-    records = _read_jsonl(path)
+    records = _read_records(path)
     designs: list[dict[str, Any]] = []
     for idx, record in enumerate(records):
         design_id = record.get("design_id")
@@ -107,6 +166,7 @@ def _load_designs(path: str) -> list[dict[str, Any]]:
         graph_payload = record.get("graph")
         if graph_payload is None:
             raise ValueError("Each record must contain a graph payload.")
+        graph_payload = _coerce_graph_payload(graph_payload)
         freq_hz = np.asarray(record.get("freq_hz"), dtype=float)
         if freq_hz.size == 0:
             raise ValueError("freq_hz must be provided.")
@@ -162,7 +222,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             except ValueError:
                 continue
 
-    _write_jsonl(args.output, outputs)
+    _write_records(args.output, outputs)
     if args.update_corpus:
         corpus.save(args.corpus)
     return 0

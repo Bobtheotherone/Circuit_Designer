@@ -22,10 +22,18 @@ REQUIRED_PYTHON: Dict[str, str] = {
     "gpytorch": ">=1.11,<1.14",
     "pytest": ">=7.4,<9",
     "packaging": ">=23,<25",
+    "pyarrow": ">=12,<17",
+    "mlflow": ">=2.12,<3",
+    "dvc": ">=3.50,<4",
+    "yaml": ">=6,<7",
 }
 
 REQUIRED_EXECUTABLE_GROUPS: Dict[str, Tuple[str, ...]] = {
     "spice": ("ngspice", "Xyce", "xyce"),
+}
+
+DISTRIBUTION_OVERRIDES: Dict[str, str] = {
+    "yaml": "PyYAML",
 }
 
 
@@ -45,8 +53,9 @@ def check_environment() -> EnvCheckResult:
         except Exception as exc:  # pragma: no cover - exercised via env
             errors.append(f"Missing Python package: {module} ({exc})")
             continue
+        dist_name = DISTRIBUTION_OVERRIDES.get(module, module)
         try:
-            version = importlib.metadata.version(module)
+            version = importlib.metadata.version(dist_name)
         except importlib.metadata.PackageNotFoundError:
             errors.append(f"Package metadata missing for {module}.")
             continue

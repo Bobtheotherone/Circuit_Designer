@@ -15,3 +15,7 @@
 - tests/test_search_active_learning.py — covers fidp/search/active_learning.py active learning iteration and caching.
 - tests/test_env_check.py — covers fidp/env_check.py environment verification for required packages and executables.
 - tests/test_novelty_scoring.py — covers fidp/metrics/novelty.py topology/response features, corpus I/O, and CLI scoring.
+- tests/test_experiments_mlflow_logger.py — covers fidp/experiments/tracking.py MLflow logging API, tagging, and artifacts.
+- tests/test_experiments_smoke_cli.py — covers fidp/experiments/smoke.py reproducibility smoke CLI and MLflow logging.
+- tests/test_repro_dvc_config.py — covers dvc.yaml/params.yaml reproducibility stage structure and defaults.
+- tests/test_env_check_repro.py — covers fidp/env_check.py MLflow/DVC/YAML import validation paths.

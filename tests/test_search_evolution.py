@@ -1,5 +1,7 @@
 import numpy as np
 
+from fidp.metrics.novelty import NoveltyMetrics
+from fidp.search import evolution as evolution_module
 from fidp.search.evolution import DesignRecord, EvolutionConfig, evolve_population
 from fidp.search.features import CircuitGraph, Component
 
@@ -41,3 +43,46 @@ def test_evolution_validity_and_determinism() -> None:
     assert np.allclose(params_a, params_b)
     assert np.all(params_a > 0.0)
     assert np.all(params_a >= bounds[0]) and np.all(params_a <= bounds[1])
+
+
+def test_offspring_clears_novelty_and_global_features() -> None:
+    graph = CircuitGraph(
+        components=[
+            Component(kind="R", node_a="1", node_b="0", value=1.0),
+            Component(kind="PORT", node_a="1", node_b="0"),
+        ],
+        ports=[],
+    )
+    novelty = NoveltyMetrics(
+        topology_novelty=0.1,
+        response_novelty=0.2,
+        overall_novelty=0.15,
+    )
+    global_features = np.array([1.0, 2.0], dtype=np.float64)
+    parent = DesignRecord(
+        graph=graph,
+        parameters=np.array([1.0, 2.0], dtype=np.float64),
+        novelty=novelty,
+        global_features=global_features,
+    )
+    parent_b = DesignRecord(
+        graph=graph,
+        parameters=np.array([2.0, 3.0], dtype=np.float64),
+        novelty=novelty,
+        global_features=global_features,
+    )
+    config = EvolutionConfig(
+        mutation_rate=1.0,
+        crossover_rate=1.0,
+        parameter_sigma=0.1,
+        population_size=2,
+    )
+    rng = np.random.default_rng(0)
+
+    mutated = evolution_module._mutate_design(parent, config, rng)
+    crossed = evolution_module._crossover_design(parent, parent_b, config, rng)
+
+    assert mutated.novelty is None
+    assert crossed.novelty is None
+    assert mutated.global_features is None
+    assert crossed.global_features is None

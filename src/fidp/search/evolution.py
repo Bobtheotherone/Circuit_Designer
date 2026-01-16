@@ -178,8 +178,8 @@ def _mutate_design(
         graph=graph,
         parameters=params,
         spec=design.spec,
-        global_features=design.global_features,
-        novelty=design.novelty,
+        global_features=None,
+        novelty=None,
         metadata=dict(design.metadata),
     )
 
@@ -200,8 +200,8 @@ def _crossover_design(
         graph=graph,
         parameters=params,
         spec=parent_a.spec,
-        global_features=parent_a.global_features,
-        novelty=parent_a.novelty,
+        global_features=None,
+        novelty=None,
         metadata=dict(parent_a.metadata),
     )
 

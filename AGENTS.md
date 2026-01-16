@@ -1,4 +1,3 @@
-````md
 # AGENTS.md — CODEX Operating Manual for FIDP (Fractal-Order Impedance Discovery Platform)
 
 This repository is being built step-by-step from a design document. **Steps 5–14** are the “main steps” that require actual code. Each of those steps will be given to you (CODEX) as an individual prompt with detailed requirements.
@@ -466,7 +465,3 @@ The step prompts will reference sections from the design doc (evaluator stack, m
 * Report and greenlight decision.
 
 That’s it.
-
-```
-::contentReference[oaicite:0]{index=0}
-```

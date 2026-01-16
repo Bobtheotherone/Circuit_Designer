@@ -1,0 +1,44 @@
+# FIDP pipeline parameters (placeholders for reproducibility plumbing).
+
+generate_candidates:
+  seed: 7
+  count: 16
+  output: data/pipeline/generate_candidates.json
+
+snap_components:
+  snap_mode: "nearest"
+  output: data/pipeline/snap_components.json
+
+evaluate_fast:
+  frequency_points: 32
+  output: data/pipeline/evaluate_fast.json
+
+train_surrogate:
+  epochs: 1
+  batch_size: 8
+  output: data/pipeline/train_surrogate.json
+
+propose_next:
+  count: 4
+  output: data/pipeline/propose_next.json
+
+simulate_spice:
+  backend: "ngspice"
+  output: data/pipeline/simulate_spice.json
+
+robustness_mc:
+  seed: 42
+  samples: 8
+  output: data/pipeline/robustness_mc.json
+
+rank_pareto:
+  max_fronts: 1
+  output: data/pipeline/rank_pareto.json
+
+report_topk:
+  k: 5
+  output: data/pipeline/report_topk.json
+
+repro_smoke:
+  output: data/repro_smoke/manifest.json
+  stage_name: repro_smoke
