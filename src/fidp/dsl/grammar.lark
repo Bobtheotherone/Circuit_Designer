@@ -1,0 +1,69 @@
+?start: program
+
+program: "circuit" NAME "{" statement* "}"
+
+statement: port_decl ";"
+         | let_decl ";"
+         | body_decl ";"
+         | netlist_decl ";"
+
+port_decl: "ports" ":" port_list
+port_list: "(" port_spec ("," port_spec)* ")"
+port_spec: NAME (":" "(" NAME "," NAME ")")?
+
+let_decl: "let" NAME "=" expr
+body_decl: "body" ":" expr
+netlist_decl: "netlist" ":" "{" net_stmt+ "}"
+
+?expr: series_expr
+     | parallel_expr
+     | repeat_expr
+     | scale_expr
+     | element_expr
+     | gen_expr
+     | ref_expr
+     | "(" expr ")"
+
+series_expr: "series" "(" expr_list ")"
+parallel_expr: "parallel" "(" expr_list ")"
+repeat_expr: "repeat" "(" expr "," INT ")"
+scale_expr: "scale" "(" expr "," value_expr ")"
+
+expr_list: expr ("," expr)*
+
+ref_expr: NAME
+
+element_expr: ELEMENT "(" value_expr ")"
+
+value_expr: NUMBER
+          | symbol_expr
+
+symbol_expr: "sym" "(" NAME "," NUMBER ("," symbol_kv)* ")"
+
+symbol_kv: min_kv | max_kv | snap_kv | snapped_kv
+min_kv: "min" "=" NUMBER
+max_kv: "max" "=" NUMBER
+snap_kv: "snap" "=" NAME
+snapped_kv: "snapped" "=" NUMBER
+
+gen_expr: "gen" NAME "(" [arg_list] ")"
+arg_list: arg ("," arg)*
+arg: NAME "=" arg_value
+arg_value: INT
+         | value_expr
+         | NAME
+         | STRING
+
+net_stmt: ELEMENT "(" value_expr ")" NAME NAME ";"
+
+ELEMENT.2: "R" | "C" | "L"
+
+%import common.CNAME -> NAME
+%import common.ESCAPED_STRING -> STRING
+%import common.INT
+
+NUMBER: /[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?[fpnumkKMGTP]?/
+
+%ignore /[ \t\f\r\n]+/
+%ignore /\/\/[^\n]*/
+%ignore /#[^\n]*/

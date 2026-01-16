@@ -5,6 +5,24 @@ class CircuitValidationError(ValueError):
     """Raised when a circuit or component is invalid."""
 
 
+class CircuitIRValidationError(ValueError):
+    """Raised when a CircuitIR structure is invalid."""
+
+
+class DSLParseError(ValueError):
+    """Raised when DSL parsing fails with location context."""
+
+    def __init__(self, message: str, line: int | None = None, column: int | None = None, context: str | None = None):
+        super().__init__(message)
+        self.line = line
+        self.column = column
+        self.context = context
+
+
+class DSLValidationError(ValueError):
+    """Raised when DSL semantics are invalid."""
+
+
 class SingularCircuitError(RuntimeError):
     """Raised when the circuit matrix is singular or disconnected."""
 
@@ -15,3 +33,7 @@ class SpiceNotAvailableError(RuntimeError):
 
 class ReductionError(RuntimeError):
     """Raised when model order reduction fails."""
+
+
+class SpiceNetlistError(RuntimeError):
+    """Raised when a SPICE netlist fails lint validation."""

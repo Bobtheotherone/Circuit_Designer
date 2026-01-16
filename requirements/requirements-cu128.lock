@@ -139,6 +139,7 @@ exceptiongroup==1.3.1
     # via
     #   anyio
     #   celery
+    #   hypothesis
     #   pytest
 fastapi==0.128.0
     # via mlflow-skinny
@@ -207,6 +208,8 @@ h11==0.16.0
     # via uvicorn
 hydra-core==1.3.2
     # via dvc
+hypothesis==6.150.2
+    # via -r requirements/requirements.in
 idna==3.11
     # via
     #   anyio
@@ -244,6 +247,8 @@ kombu==5.6.2
     #   celery
     #   dvc
     #   dvc-task
+lark==1.3.1
+    # via -r requirements/requirements.in
 linear-operator==0.5.3
     # via
     #   botorch
@@ -284,6 +289,7 @@ multipledispatch==1.0.0
     # via botorch
 networkx==3.4.2
     # via
+    #   -r requirements/requirements.in
     #   dvc
     #   torch
 numpy==2.2.6
@@ -523,6 +529,8 @@ six==1.17.0
     #   python-dateutil
 smmap==5.0.2
     # via gitdb
+sortedcontainers==2.4.0
+    # via hypothesis
 sqlalchemy==2.0.45
     # via
     #   alembic

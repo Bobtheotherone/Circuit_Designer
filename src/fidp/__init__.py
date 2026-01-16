@@ -4,9 +4,13 @@ from fidp.circuits import CircuitGraph, Port, Resistor, Capacitor, Inductor
 from fidp.data import DescriptorSystem, ReducedDescriptorSystem, ImpedanceSweep
 from fidp.errors import (
     CircuitValidationError,
+    CircuitIRValidationError,
+    DSLParseError,
+    DSLValidationError,
     SingularCircuitError,
     SpiceNotAvailableError,
     ReductionError,
+    SpiceNetlistError,
 )
 
 __all__ = [
@@ -19,7 +23,11 @@ __all__ = [
     "ReducedDescriptorSystem",
     "ImpedanceSweep",
     "CircuitValidationError",
+    "CircuitIRValidationError",
+    "DSLParseError",
+    "DSLValidationError",
     "SingularCircuitError",
     "SpiceNotAvailableError",
     "ReductionError",
+    "SpiceNetlistError",
 ]

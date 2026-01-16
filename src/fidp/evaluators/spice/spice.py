@@ -8,6 +8,7 @@ import csv
 import shutil
 import subprocess
 from pathlib import Path
+from abc import ABC, abstractmethod
 
 import numpy as np
 
@@ -138,7 +139,7 @@ def _find_complex_columns(header: List[str], node: str) -> tuple[int, int]:
     raise ValueError("Complex voltage columns not found in SPICE CSV header.")
 
 
-class SpiceRunner:
+class SpiceRunner(ABC):
     """Base class for running SPICE simulations."""
 
     name: str = "spice"
@@ -153,8 +154,10 @@ class SpiceRunner:
             raise SpiceNotAvailableError(f"{executable} not found in PATH.")
         return path
 
+    @abstractmethod
     def build_command(self, netlist_path: Path, output_csv: str) -> List[str]:
-        raise NotImplementedError
+        """Construct the SPICE command for the given netlist path."""
+        pass
 
     def run(
         self,

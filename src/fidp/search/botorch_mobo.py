@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Optional, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -124,7 +124,54 @@ def propose_next_botorch(
     candidates = candidates * (bounds_tensor[1] - bounds_tensor[0]) + bounds_tensor[0]
 
     if constraints:
-        # Constraints are accepted for API completeness but not enforced yet.
-        raise NotImplementedError("Constraints are not yet supported in propose_next_botorch.")
+        candidates = _apply_constraints(candidates.detach().cpu().numpy(), constraints, bounds_array, batch_size, seed)
+        return candidates
 
     return candidates.detach().cpu().numpy()
+
+
+def _apply_constraints(
+    candidates: np.ndarray,
+    constraints: Sequence[Tuple[np.ndarray, float]],
+    bounds_array: np.ndarray,
+    batch_size: int,
+    seed: Optional[int],
+) -> np.ndarray:
+    dim = bounds_array.shape[1]
+    filtered = _filter_candidates(candidates, constraints, dim)
+    if filtered.shape[0] >= batch_size:
+        return filtered[:batch_size]
+
+    rng = np.random.default_rng(seed)
+    lower, upper = bounds_array
+    attempts = 0
+    extra: List[np.ndarray] = []
+    while len(extra) + filtered.shape[0] < batch_size and attempts < 50:
+        sample = rng.random((batch_size, dim)) * (upper - lower) + lower
+        sample = _filter_candidates(sample, constraints, dim)
+        if sample.size:
+            extra.append(sample)
+        attempts += 1
+
+    if extra:
+        filtered = np.vstack([filtered] + extra)
+    if filtered.shape[0] < batch_size:
+        raise ValueError("Unable to satisfy constraints with available candidates.")
+    return filtered[:batch_size]
+
+
+def _filter_candidates(
+    candidates: np.ndarray,
+    constraints: Sequence[Tuple[np.ndarray, float]],
+    dim: int,
+) -> np.ndarray:
+    filtered = np.asarray(candidates, dtype=np.float64)
+    for weights, threshold in constraints:
+        weights = np.asarray(weights, dtype=np.float64).reshape(-1)
+        if weights.shape[0] != dim:
+            raise ValueError("Constraint weights must match candidate dimension.")
+        mask = filtered @ weights <= threshold
+        filtered = filtered[mask]
+        if filtered.size == 0:
+            break
+    return filtered

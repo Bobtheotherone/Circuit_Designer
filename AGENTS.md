@@ -4,6 +4,8 @@ This repository is being built step-by-step from a design document. **Steps 5–
 
 Your job is to implement the requested step **correctly, reproducibly, GitHub-ready, and with targeted tests**. You must behave in a way that is compatible with *any* of the individual step prompts (5–14) we send.
 
+**IMPORTANT:** This document operates under a strict **"No Scaffolding"** policy (see §13). Every step must result in a fully hardened, production-ready subsystem. The definitions of "DONE" and "GREENLIT" in the early sections are superseded by the stricter requirements in sections 13–22. **If any requirement conflicts, §13–22 wins.**
+
 ---
 
 ## 0) Prime Directive
@@ -14,7 +16,7 @@ At the end of each step you must:
 
 1. Add/modify **targeted pytest tests** under `tests/` that directly validate the new or changed behavior.
 2. Run **all tests that are plausibly affected by the latest modifications**, show they pass, and include the command(s) + output summary.
-3. Provide a short recap and explicitly state whether we are **greenlit** to proceed to the next prompt.
+3. Provide a short recap and explicitly state whether we are **greenlit** to proceed to the next prompt (subject to the strict criteria in §13.3).
 4. Ensure the repo is **GitHub-ready** (no accidental tracked caches/venv/secrets), and provide a **suggested commit message** plus the exact push command:
    - `./ship.sh "message"`
 
@@ -25,9 +27,11 @@ You do **not** need to run the *entire* test suite on every step, but you **must
 ## 0.1 GitHub-Ready Workflow (mandatory)
 
 ### 0.1.1 `ship.sh` must exist and work
+
 This repo uses a single “always push” script: **`./ship.sh "commit message"`**.
 
 **Rules**
+
 - Do **not** change `ship.sh` unless it is missing, broken, or a step explicitly requires updating it.
 - Do **not** run `./ship.sh` automatically unless the step prompt explicitly instructs you to commit/push. Your job is to prepare the repo so the user can run it.
 
@@ -177,6 +181,7 @@ When implementing a step, keep all code **modular** and **testable**.
 
 ### 2.1 Work style
 
+* **Strict No-Scaffolding Policy:** See §13.1. Zero placeholders, zero `pass`, zero `NotImplementedError` (unless explicitly requested).
 * Prefer **small, focused diffs** over sweeping refactors.
 * If you must refactor to implement a step cleanly, keep it minimal and include tests proving behavior didn’t regress.
 * Implement with “correctness first” and add guardrails (input validation, clear errors).
@@ -185,6 +190,7 @@ When implementing a step, keep all code **modular** and **testable**.
 
 * All randomized operations must accept a seed and be deterministic when seeded.
 * Tests must be deterministic and stable.
+* Artifacts (listings, candidates) must have deterministic ordering (§14.4).
 
 ### 2.3 No surprises
 
@@ -219,6 +225,7 @@ When implementing a step, keep all code **modular** and **testable**.
 * Python-only unless explicitly instructed otherwise.
 * Keep library code under `src/fidp/` (or the existing package root).
 * Tests under `tests/`.
+* Adhere to Type Discipline (§15.2): Use type hints and structured records (Dataclasses/TypedDict; Pydantic allowed only if already a dependency or explicitly required by a step prompt).
 
 ### 3.2 Style expectations
 
@@ -258,14 +265,15 @@ Before coding, do a quick repo hygiene check:
 2. Identify which modules/files are likely impacted.
 3. Propose an implementation plan (2–6 bullets).
 4. Identify the **test plan** (which tests you’ll add/update; which existing tests you’ll run).
+5. **Hardening Check:** Explicitly list assumptions to ensure the implementation is "Operationally Complete" (§13.2).
 
 ### Phase B — Implement
 
-1. Implement the requested functionality with minimal necessary changes.
+1. Implement the requested functionality with minimal necessary changes, adhering to the **No Scaffolding** rules (§13.1).
 2. Add/modify **targeted** tests that verify:
 
    * correctness on representative cases,
-   * error handling for invalid inputs,
+   * error handling for invalid inputs (structured errors, §14.3),
    * any invariants (e.g., passivity checks, monotonic metrics, shape constraints).
 3. Update docs only if the step requires it or if changes would otherwise be unclear.
 
@@ -290,7 +298,8 @@ Provide a final response that includes:
 * **Results**: “PASS” summary (and any key logs if relevant).
 * **Suggested commit message**: a single ideal line for the user to use.
 * **Push command**: the exact command: `./ship.sh "..."`.
-* **Greenlight**: Explicitly state `GREENLIT: YES` or `GREENLIT: NO`, and if NO, what must be done before the next prompt.
+* **Hardening checklist status**: Confirmation of compliance with §14–§19.
+* **Greenlight**: Explicitly state `GREENLIT: YES` or `GREENLIT: NO` (per stricter definition in §13.3).
 
 ---
 
@@ -311,13 +320,14 @@ Provide a final response that includes:
 
 ### 5.2 What tests must assert
 
-Tests should verify:
+Tests must be meaningful (§18.1). They should verify:
 
 * core numerical correctness within tolerances,
 * shape + type expectations,
 * edge cases (empty graphs, singular matrices, invalid component values),
 * determinism (seeded runs),
-* regression for previously fixed issues.
+* regression for previously fixed issues,
+* failure modes (structured errors).
 
 ### 5.3 Keep tests fast
 
@@ -342,11 +352,13 @@ For each modified source module `src/fidp/<area>/X.py`:
 1. Run any tests in `tests/` whose filename matches the area or feature:
 
    * e.g., changing `mna/assemble.py` → run `tests/test_mna_*`
+
 2. Search tests for imports/references to the module and run those test files too.
 
    * Example technique:
 
      * `rg "fidp\.mna\.assemble|from fidp\.mna\.assemble" tests -n`
+
 3. If you changed a shared utility used broadly (e.g., `fidp/utils.py`, core schemas, DesignRecord):
 
    * run the broader set in that domain (often all `tests/test_*.py` in core areas).
@@ -384,12 +396,15 @@ Unless a step prompt specifies otherwise:
 * Use relative/absolute tolerances appropriate to the calculation:
 
   * `pytest.approx` with `rel=1e-6` to `1e-3` depending on conditioning.
+
 * For fits (fractional/rational), validate:
 
   * error curves are within the step’s defined thresholds,
   * monotonic or bounded properties when expected.
 
-If you introduce new metrics, define their tolerances clearly in tests.
+* **Passivity/Realizability:** See §16.2. Violations must be flagged.
+
+* **Conditioning:** See §14.2. Include diagnostics for linear system solving.
 
 ---
 
@@ -405,6 +420,8 @@ When adding artifacts generation, keep outputs under:
 * `artifacts/` (gitignored unless instructed)
 * or a step-defined path.
 
+**Artifact Integrity:** See §17.3. Artifacts must be content-addressed or versioned.
+
 ---
 
 ## 9) Performance Guidance (workstation constraints)
@@ -414,6 +431,7 @@ We are on a single workstation (GPU + CPU). Keep the pipeline:
 * batch-friendly (vectorized ops where possible),
 * cache-aware (avoid recomputing expensive sweeps),
 * testable without long runtime.
+* **Performance Engineering:** See §14.5. Inner loops must avoid avoidable allocations.
 
 Avoid any design that requires “billions of explicit components.” Use hierarchical/recursive representations when needed.
 
@@ -421,18 +439,25 @@ Avoid any design that requires “billions of explicit components.” Use hierar
 
 ## 10) Definition of Done (for each step)
 
-A step is **DONE** only when:
+**Note:** This definition is upgraded by §13.2 ("Operationally Complete"). A step is **DONE** only when:
 
 * Implementation meets the step prompt’s acceptance criteria.
+
+* The subsystem is callable, emits real artifacts, handles failures, and is deterministic (§13.2).
+
 * Targeted tests are added/updated in `tests/`.
+
 * Relevant tests (per §6) have been run and pass.
+
 * Repo is GitHub-ready (no tracked venv/cache/secrets).
+
 * If dependencies/environment were changed:
 
   * `./scripts/bootstrap.sh` must succeed (or fail only with explicit, actionable instructions)
   * `python -m fidp.env_check` must pass
   * locks must be updated and consistent (cpu + cu128)
-* You provide a recap + `GREENLIT: YES` + suggested commit message + push command.
+
+* You provide a recap + `GREENLIT: YES` + suggested commit message + push command + Hardening Status.
 
 If not done, explicitly say `GREENLIT: NO` and list the blocking issues.
 
@@ -440,7 +465,7 @@ If not done, explicitly say `GREENLIT: NO` and list the blocking issues.
 
 ## 11) Response Template (use at end of each step)
 
-Use this exact structure:
+Use this exact structure (includes additions from §20):
 
 1. **Recap**
 2. **Files changed**
@@ -449,7 +474,9 @@ Use this exact structure:
 5. **Results**
 6. **Suggested commit message**
 7. **Push command**
-8. **GREENLIT: YES/NO** (with reason)
+8. **Hardening checklist status** (list §14–§19 compliance)
+9. **Known limitations** (must be empty for GREENLIT unless explicitly allowed)
+10. **GREENLIT: YES/NO** (with reason)
 
 ---
 
@@ -458,10 +485,324 @@ Use this exact structure:
 The step prompts will reference sections from the design doc (evaluator stack, model extraction, AI search, novelty scoring, reproducibility, parallelism, validation gates, etc.). This AGENTS.md applies uniformly:
 
 * Implement what the step asks.
+* **Build the complete system for the step** (Meta-Rule §21).
 * Add targeted tests for what you changed.
 * Run all relevant tests (not necessarily all tests).
 * Keep the repo clean for GitHub.
 * Provide a suggested commit message + `./ship.sh "message"` command.
-* Report and greenlight decision.
+* Report and greenlight decision using the upgraded criteria.
 
-That’s it.
+---
+
+## 13) “No Scaffolding” Addendum (MANDATORY for Steps 5–14)
+
+This section **extends** (and where explicitly stated, **overrides**) earlier guidance. It exists to enforce the **No-Scaffolding** requirement: every step must land as a **fully fledged, hardened, state-of-the-art implementation**, not “minimal now, improve later.”
+
+### 13.1 Non-Negotiable: Zero Scaffolding in Production Paths
+
+**Forbidden in any production code path** (`src/fidp/**`), for steps 5–14:
+
+* `pass` as a placeholder in any non-abstract method
+* `raise NotImplementedError` (unless the step prompt explicitly requires a deliberately unsupported feature AND you provide an alternative fully working path)
+* `TODO`, `FIXME`, `HACK`, or “stub” comments indicating incompleteness
+* fake implementations to “make tests pass”
+* feature flags that hide missing functionality
+* silent fallbacks that reduce correctness
+
+**If the step prompt explicitly asks for a subset**, treat that as the **floor**. Implement the complete subsystem needed for the feature to be reliable in the repo’s real workflow (evaluation → modeling → metrics → logging → reproducibility).
+
+**Rule:** If the system can reach a runtime state where it fails due to missing code, the step is **NOT DONE**.
+
+### 13.2 “Done” Means Operationally Complete
+
+For steps 5–14, “DONE” means:
+
+* The new subsystem can be exercised end-to-end via **an actual callable interface** (module API and/or script entry point)
+* It emits **real artifacts** (structured outputs, logs, serialized records, plots if relevant)
+* It supports **failure handling** and returns structured error diagnostics (no cryptic stack traces as the primary UX)
+* It is deterministic under seed control (where randomness exists)
+* It is test-verified with meaningful assertions (not just “it runs”)
+
+### 13.3 Strict Definition of GREENLIT (Upgraded)
+
+From this point onward:
+
+* `GREENLIT: YES` means **you have done everything reasonably possible** to make the step’s deliverable **complete, robust, and state-of-the-art**, consistent with the step prompt.
+* It is *not* sufficient to “implement the minimal asked behavior.” You must build the full implementation envelope:
+
+  * correctness
+  * determinism
+  * performance
+  * reproducibility
+  * debug-ability
+  * doc + usage clarity
+  * tests that would catch regressions
+
+If any of those are meaningfully lacking, you must output `GREENLIT: NO` and list the concrete missing items.
+
+---
+
+## 14) Hardening Checklist (apply to every step, always)
+
+This checklist must be actively applied during Phase B/C and explicitly referenced in your recap if any item was relevant.
+
+### 14.1 Correctness & Invariants
+
+* Enforce domain invariants at boundaries (input validation):
+
+  * component values must be finite and within bounds
+  * ports must be well-defined
+  * graph/circuit must be connected appropriately for the operation
+
+* Add assertions/tests for invariants central to the step:
+
+  * e.g., passivity margin non-negative for passive networks
+  * canonical hashes stable under relabeling
+  * fitted models reproduce the target response within tolerance
+
+### 14.2 Numerical Stability
+
+* Always include:
+
+  * conditioning diagnostics (or at least warnings) when solving linear systems
+  * controlled tolerances, consistent frequency grids, and log-spacing utilities
+  * avoidance of catastrophic cancellation when computing metrics
+
+* When fitting models:
+
+  * record fit residuals + max error
+  * reject bad fits explicitly (don’t silently accept)
+
+### 14.3 Failure Modes Must Be First-Class
+
+* Every “expected failure” must be representable as a structured error:
+
+  * non-convergence
+  * singular matrix
+  * invalid topology
+  * passivity failure
+  * SPICE non-convergence or missing executable
+
+* Tests must cover at least one representative failure mode per major module changed in the step.
+
+### 14.4 Deterministic Artifacts
+
+For any pipeline-like or search-like code:
+
+* outputs must be stable under seed, including:
+
+  * ordering of candidates
+  * serialization ordering (stable dict ordering is not enough—must define canonical order)
+  * selection of Pareto sets
+
+### 14.5 Performance Engineering Is Part of “Done”
+
+If the step touches “inner loop” code (evaluation, fitting, scoring, search), you must:
+
+* avoid avoidable allocations in tight loops
+* cache expensive intermediate results by content hash
+* include at least one micro-benchmark script or benchmark test (fast) that exercises the core path
+
+---
+
+## 15) Quality Tooling Expectations (No-Scaffolding Mode)
+
+This repo must be “professional-grade.” If the tooling is not already present, you may need to add it as part of a step **when it directly supports the step’s robustness**. You must follow the dependency process in §0.2.
+
+### 15.1 Mandatory Baselines (when present, they must pass)
+
+If configured in the repo:
+
+* formatting/lint (e.g., ruff/black)
+* type checking (mypy/pyright)
+* import sorting (if configured)
+* basic security scan (if configured)
+
+**Policy:** if you introduce or modify this tooling, you must add tests or CI hooks only if the step prompt requires; otherwise keep it local but passing and documented.
+
+### 15.2 Type Discipline
+
+For steps 5–14:
+
+* new public functions/classes must have type hints
+* dataclasses and TypedDict/Pydantic-like schemas must be used for structured records
+* avoid “Any” in public surfaces; if unavoidable, confine it internally and justify
+
+---
+
+## 16) Scientific Rigor Requirements (apply whenever relevant)
+
+### 16.1 Cross-Method Consistency (when you add or change evaluators)
+
+If a step modifies an evaluator or adds a new fidelity tier:
+
+* create at least one test that cross-checks results against an independent method:
+
+  * recurrence vs sparse MNA
+  * sparse MNA vs SPICE
+  * reduced model vs full model
+
+* define explicit tolerances and justify them (conditioning-aware)
+
+### 16.2 Passivity / Realizability Discipline
+
+If a step touches:
+
+* macromodel fitting
+* MOR
+* passivity metrics
+* “passive effective element” claims
+
+Then you must:
+
+* compute and store passivity margin on an evaluation grid
+* ensure passivity violations are flagged and cannot be silently ignored
+* implement enforcement if the step prompt implies passivity as a requirement
+* add tests that:
+
+  * deliberately introduce a violation
+  * verify detection
+  * verify enforcement actually fixes it (or properly rejects)
+
+### 16.3 “No Simulator Ghosts” Policy
+
+When results could plausibly be artifacts (grid effects, resonant spikes, numerical instability):
+
+* add at least one sanity check:
+
+  * grid refinement check (coarser vs finer grid consistency)
+  * perturbation check (small component perturbations don’t create “false novelty”)
+
+* ensure reporting includes warnings for suspicious patterns
+
+---
+
+## 17) Reproducibility & Evidence Pack Requirements (No-Scaffolding Mode)
+
+### 17.1 Every Step Must Leave the Repo More “Runnable”
+
+Even if the step prompt is internal, your implementation must be runnable via:
+
+* a module entry point, OR
+* a `scripts/` entry point, OR
+* a documented `python -m fidp.<module>` entry point
+
+If you add a new subsystem, you must provide:
+
+* a minimal usage example (docstring and/or `docs/` snippet)
+* a reproducible “demo run” command
+
+### 17.2 DesignRecord/Evidence Discipline (when relevant)
+
+If the step generates candidates, evaluates circuits, fits models, or ranks results:
+
+* you must store results in a structured artifact (DesignRecord or equivalent)
+* you must include provenance fields:
+
+  * seed
+  * git SHA (or placeholder if unavailable in test env)
+  * dependency lock fingerprint (if accessible)
+  * evaluator versions
+
+### 17.3 Artifact Integrity
+
+Artifacts must be:
+
+* content-addressed where practical (hash key)
+* stored in stable locations (configurable path)
+* never overwritten without versioning (append or new key)
+
+---
+
+## 18) Testing Upgrades for Strict GREENLIT
+
+### 18.1 Tests Must Be Meaningful, Not Cosmetic
+
+Prohibited patterns in tests:
+
+* asserting only “no exception”
+* asserting only shape/length when numeric correctness is the core purpose
+* accepting overly loose tolerances without justification
+
+Required patterns (when relevant):
+
+* numeric validation on known circuits (goldens)
+* roundtrip tests (export → parse → evaluate)
+* failure-mode tests (structured errors)
+* determinism tests
+
+### 18.2 Golden Data Policy
+
+If a step introduces a stable numerical output (e.g., baseline impedance curve, passivity margin for a canonical circuit):
+
+* store a small golden fixture under `tests/fixtures/`
+* use stable serialization (e.g., CSV/NPY/JSON with controlled formatting)
+* add a regression test that compares against the golden within tolerance
+
+### 18.3 Test Runtime Discipline
+
+If you add slow tests:
+
+* mark them `@pytest.mark.slow`
+* keep default test runs fast
+* in Phase C, run slow tests only if directly relevant to the modifications
+
+---
+
+## 19) Pipeline/DVC/MLflow Policy (Strict)
+
+If a step touches pipelines or experiment orchestration, the outcome must be a **real pipeline**, not a decorative DAG:
+
+* every stage must do real work
+* every stage must have explicit inputs/outputs
+* failure must be explicit and actionable
+* stage outputs must be verifiable by tests (at least schema/shape checks)
+
+If MLflow logging is involved:
+
+* logging must include enough artifacts to reproduce results
+* tests must verify that logging calls occur and that required keys are present (without depending on a real MLflow server)
+
+---
+
+## 20) Strict GREENLIT Report Additions (Required going forward)
+
+In addition to the existing response template (§11), for steps 5–14 you must also include:
+
+9. **Hardening checklist status**
+
+   * list any relevant items from §14–§19 and confirm they were satisfied
+
+10. **Known limitations (must be empty for GREENLIT unless explicitly allowed by step)**
+
+* if any limitations remain, you must set `GREENLIT: NO` unless the step prompt explicitly permits deferral
+
+**Rule:** “We can do it later” is not acceptable in No-Scaffolding Mode.
+
+---
+
+## 21) Meta-Rule: Interpret Prompts as “Build the Complete System for This Step”
+
+For each step prompt:
+
+* implement not only the direct feature, but also:
+
+  * the surrounding reliability envelope (errors, determinism, logging, artifacts)
+  * the performance envelope (caching, batching where appropriate)
+  * the testing envelope (unit + regression + failure mode)
+  * the documentation envelope (how to use the feature)
+
+If you believe the prompt’s requested behavior is ambiguous, you must:
+
+* choose the most rigorous interpretation,
+* list your assumptions explicitly in Phase A,
+* proceed without waiting for approval.
+
+---
+
+## 22) Summary of What Changed With This Addendum
+
+* “GREENLIT” is now **far stricter**: it means the step is genuinely complete.
+* “Scaffolding” is explicitly **forbidden** in production paths.
+* Hardening, reproducibility, and scientific rigor are now **mandatory step deliverables**, not optional extras.
+* Tests must be **meaningful**, include failures, and include golden regressions where appropriate.

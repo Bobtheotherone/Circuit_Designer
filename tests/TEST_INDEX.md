@@ -24,3 +24,7 @@
 - tests/test_parallel_executor.py — covers fidp/parallel/executor.py task ordering, error propagation, resource routing, and cache use.
 - tests/test_parallel_cache.py — covers fidp/parallel/cache.py cache actor CRUD and LRU eviction.
 - tests/test_parallel_actor_pool.py — covers fidp/parallel/actor_pool.py actor pool mapping correctness.
+- tests/test_dsl_parse_roundtrip.py — covers fidp/dsl/parser.py DSL parsing, formatting, and error locations.
+- tests/test_graph_canonical_hash.py — covers fidp/circuits/canonical.py canonical hashes, VF2 isomorphism, and dedupe.
+- tests/test_spice_export_validity.py — covers fidp/circuits/ir_export.py SPICE export determinism and linting.
+- tests/test_dsl_fuzz.py — covers fidp/dsl/compiler.py fuzzed DSL compilation, JSON roundtrip, and export invariants.
