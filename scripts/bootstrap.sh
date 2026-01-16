@@ -15,7 +15,7 @@ import sys
 print(f"{sys.version_info.major}.{sys.version_info.minor}")
 PY
 )
-REQUIRED="3.9"
+REQUIRED="3.10"
 if [ "$(printf '%s\n' "$REQUIRED" "$PY_VERSION" | sort -V | head -n1)" != "$REQUIRED" ]; then
   echo "ERROR: Python >= $REQUIRED is required (found $PY_VERSION)." >&2
   exit 1
