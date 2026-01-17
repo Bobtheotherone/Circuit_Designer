@@ -114,9 +114,9 @@ def run_demo(seed: int, enable_symbolic: bool) -> Path:
     out_dir = _artifact_dir(payload)
     if out_dir.exists():
         counter = 1
-        while (out_dir.parent / f\"{out_dir.name}_v{counter}\").exists():
+        while (out_dir.parent / f"{out_dir.name}_v{counter}").exists():
             counter += 1
-        out_dir = out_dir.parent / f\"{out_dir.name}_v{counter}\"
+        out_dir = out_dir.parent / f"{out_dir.name}_v{counter}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     summary = {
