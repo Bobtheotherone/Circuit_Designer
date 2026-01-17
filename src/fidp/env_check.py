@@ -32,11 +32,12 @@ REQUIRED_PYTHON: Dict[str, str] = {
     "yaml": ">=6,<7",
 }
 
-REQUIRED_EXECUTABLE_GROUPS: Dict[str, Tuple[str, ...]] = {
-    "spice": ("ngspice",),
-    "xyce": ("Xyce", "xyce"),
+REQUIRED_EXECUTABLES: Dict[str, Tuple[str, ...]] = {
+    "ngspice": ("ngspice",),
 }
-OPTIONAL_EXECUTABLES: Dict[str, Tuple[str, ...]] = {}
+OPTIONAL_EXECUTABLES: Dict[str, Tuple[str, ...]] = {
+    "Xyce": ("Xyce", "xyce"),
+}
 
 DISTRIBUTION_OVERRIDES: Dict[str, str] = {
     "yaml": "PyYAML",
@@ -73,20 +74,21 @@ def check_environment() -> EnvCheckResult:
         except InvalidVersion:
             errors.append(f"Unable to parse version for {module}: {version}.")
 
-    for group, executables in REQUIRED_EXECUTABLE_GROUPS.items():
+    for name, executables in REQUIRED_EXECUTABLES.items():
         if not _any_executable(executables):
-            if group == "spice":
+            if name == "ngspice":
                 errors.append(_format_spice_missing(executables))
-            elif group == "xyce":
-                errors.append(_format_xyce_missing(executables))
             else:
                 candidates = ", ".join(executables)
-                errors.append(f"Missing required {group} executable (one of: {candidates}).")
+                errors.append(f"Missing required executable for {name} (one of: {candidates}).")
 
     for name, executables in OPTIONAL_EXECUTABLES.items():
         if not _any_executable(executables):
-            candidates = ", ".join(executables)
-            warnings.append(f"Optional executable missing for {name} (one of: {candidates}).")
+            if name.lower() == "xyce":
+                warnings.append(_format_xyce_optional_missing(executables))
+            else:
+                candidates = ", ".join(executables)
+                warnings.append(f"Optional executable missing for {name} (one of: {candidates}).")
 
     return EnvCheckResult(ok=not errors, errors=errors, warnings=warnings)
 
@@ -107,18 +109,40 @@ def _format_spice_missing(executables: Iterable[str]) -> str:
     return "\n".join(guidance)
 
 
-def _format_xyce_missing(executables: Iterable[str]) -> str:
+def _format_xyce_optional_missing(executables: Iterable[str]) -> str:
     candidates = ", ".join(executables)
     guidance = [
-        f"Missing required Xyce executable (one of: {candidates}).",
-        "Install Xyce manually and ensure it is on PATH:",
+        f"Optional Xyce executable missing (one of: {candidates}).",
+        "Xyce is optional; ngspice is the required baseline.",
+        "Install Xyce manually and ensure it is on PATH if you need it:",
         "  https://xyce.sandia.gov/",
     ]
     return "\n".join(guidance)
 
 
+def _format_executable_status_lines(
+    executables: Dict[str, Tuple[str, ...]],
+    required: bool,
+) -> List[str]:
+    lines: List[str] = []
+    for name, candidates in executables.items():
+        label = "/".join(candidates)
+        status = "OK" if _any_executable(candidates) else "MISSING"
+        if not required:
+            status = f"{status} (optional)"
+        lines.append(f"  {name} ({label}): {status}")
+    return lines
+
+
 def main() -> None:
     result = check_environment()
+    print("Executable check:")
+    print("Required executables:")
+    for line in _format_executable_status_lines(REQUIRED_EXECUTABLES, required=True):
+        print(line)
+    print("Optional executables:")
+    for line in _format_executable_status_lines(OPTIONAL_EXECUTABLES, required=False):
+        print(line)
     if result.ok:
         print("Environment check passed.")
         for warning in result.warnings:

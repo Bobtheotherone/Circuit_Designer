@@ -15,8 +15,7 @@ def test_env_check_success(monkeypatch) -> None:
     assert result.errors == []
     assert result.warnings == []
 
-
-def test_env_check_missing_executable(monkeypatch) -> None:
+def test_env_check_missing_ngspice(monkeypatch) -> None:
     def _missing(_: str) -> None:
         return None
 
@@ -27,4 +26,17 @@ def test_env_check_missing_executable(monkeypatch) -> None:
     assert any("apt-get install -y ngspice" in error for error in result.errors)
     assert any("brew install ngspice" in error for error in result.errors)
     assert any("Windows" in error for error in result.errors)
-    assert any("Missing required Xyce executable" in error for error in result.errors)
+
+
+def test_env_check_missing_xyce_optional(monkeypatch) -> None:
+    def _fake_which(name: str) -> str | None:
+        if name == "ngspice":
+            return "/usr/bin/ngspice"
+        return None
+
+    monkeypatch.setattr(shutil, "which", _fake_which)
+    result = check_environment()
+    assert result.ok
+    assert result.errors == []
+    assert any("Xyce" in warning for warning in result.warnings)
+    assert any("optional" in warning.lower() for warning in result.warnings)

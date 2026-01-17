@@ -11,12 +11,16 @@ import time
 import numpy as np
 
 from fidp.circuits import CircuitIR
+from fidp.circuits.ops import flatten_circuit
 from fidp.circuits.ir import PortDef
 from fidp.errors import CircuitIRValidationError, SpiceNotAvailableError, SpiceSimulationError
 from fidp.evaluators.spice.spice import (
     AcAnalysisSpec,
     NgSpiceRunner,
     XyceRunner,
+    _build_spice_node_map,
+    _map_node,
+    _mapped_measure_nodes,
     export_spice_netlist_ir,
 )
 from fidp.evaluators.types import EvalError, EvalRequest, EvalResult, FrequencyGridSpec
@@ -50,6 +54,19 @@ class SpiceEvaluator:
 
         analysis_spec = _analysis_spec_from_grid(request.grid)
         measure_nodes = _measure_nodes(ports)
+        try:
+            flat = flatten_circuit(circuit)
+        except CircuitIRValidationError as exc:
+            return _error_result(freqs, "netlist_invalid", str(exc), {})
+        if flat.subcircuits:
+            return _error_result(
+                freqs,
+                "netlist_invalid",
+                "Circuit requires full flattening for SPICE export.",
+                {"remaining_subcircuits": len(flat.subcircuits)},
+            )
+        node_map = _build_spice_node_map(flat)
+        mapped_measure_nodes = _mapped_measure_nodes(measure_nodes, node_map)
 
         runner = _select_runner(request.spice_simulator)
         output_csv = "spice_output.csv"
@@ -66,13 +83,14 @@ class SpiceEvaluator:
                         simulator=runner.name,
                         value_mode=request.value_mode,
                         measure_nodes=measure_nodes,
+                        node_map=node_map,
                     )
                 except CircuitIRValidationError as exc:
                     return _error_result(freqs, "netlist_invalid", str(exc), {})
                 try:
                     freq_out, node_voltages = runner.run_nodes(
                         netlist,
-                        measure_nodes,
+                        mapped_measure_nodes,
                         workdir / f"port_{idx}",
                         output_csv=output_csv,
                         timeout_s=request.timeout_s,
@@ -98,8 +116,10 @@ class SpiceEvaluator:
                     )
 
                 for row, port_i in enumerate(ports):
-                    v_pos = node_voltages[port_i.pos]
-                    v_neg = node_voltages[port_i.neg]
+                    pos_node = _map_node(port_i.pos, node_map)
+                    neg_node = _map_node(port_i.neg, node_map)
+                    v_pos = _node_voltage(node_voltages, pos_node, freqs)
+                    v_neg = _node_voltage(node_voltages, neg_node, freqs)
                     Z[:, row, idx] = v_pos - v_neg
 
         if Z.shape[1] == 1:
@@ -166,6 +186,16 @@ def _classify_spice_error(message: str) -> str:
     if "conver" in lower:
         return "spice_nonconvergence"
     return "spice_failed"
+
+
+def _node_voltage(
+    node_voltages: dict[str, np.ndarray],
+    node: str,
+    freqs: np.ndarray,
+) -> np.ndarray:
+    if node == "0":
+        return np.zeros_like(freqs, dtype=complex)
+    return node_voltages[node]
 
 
 class _workdir:

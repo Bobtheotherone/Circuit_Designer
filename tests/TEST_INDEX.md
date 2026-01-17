@@ -28,7 +28,8 @@
 - tests/test_graph_canonical_hash.py — covers fidp/circuits/canonical.py canonical hashes, VF2 isomorphism, and dedupe.
 - tests/test_spice_export_validity.py — covers fidp/circuits/ir_export.py SPICE export determinism and linting.
 - tests/test_dsl_fuzz.py — covers fidp/dsl/compiler.py fuzzed DSL compilation, JSON roundtrip, and export invariants.
-- tests/test_mna_vs_spice_small.py — covers fidp/evaluators/mna/solver.py vs fidp/evaluators/spice/evaluator.py consistency on small circuits.
+- tests/test_spice_runner_contract.py — covers fidp/evaluators/spice/evaluator.py runner/CSV parsing contract with fake ngspice.
+- tests/test_mna_vs_spice_ngspice.py — covers fidp/evaluators/mna/solver.py vs fidp/evaluators/spice/evaluator.py consistency with real ngspice.
 - tests/test_recurrence_convergence.py — covers fidp/evaluators/recurrence/evaluator.py convergence, non-convergence handling, and Anderson fallback.
 - tests/test_prima_passivity.py — covers fidp/evaluators/mor/prima.py adaptive PRIMA reduction and passivity checks.
 - tests/test_evaluator_failure_modes.py — covers fidp/evaluators/mna/solver.py, fidp/evaluators/spice/evaluator.py, and fidp/evaluators/mor/evaluator.py failure handling.

@@ -13,9 +13,10 @@ from abc import ABC, abstractmethod
 import numpy as np
 
 from fidp.circuits import CircuitGraph, CircuitIR, Port, PortDef, Resistor, Capacitor, Inductor
-from fidp.circuits.ir_export import export_spice_netlist as export_ir_netlist
+from fidp.circuits.ir_export import _sanitize_node, _sorted_components
+from fidp.circuits.ops import flatten_circuit
 from fidp.data import ImpedanceSweep
-from fidp.errors import SpiceNotAvailableError, SpiceSimulationError
+from fidp.errors import CircuitIRValidationError, SpiceNotAvailableError, SpiceSimulationError
 
 
 @dataclass(frozen=True)
@@ -98,28 +99,67 @@ def parse_spice_csv(path: Path, port: Port) -> ImpedanceSweep:
 
 def parse_spice_csv_nodes(path: Path, nodes: Sequence[str]) -> tuple[np.ndarray, Dict[str, np.ndarray]]:
     """Parse CSV output with voltages for multiple nodes."""
+    text = path.read_text(encoding="utf-8").splitlines()
+    if not text:
+        raise ValueError("SPICE output file is empty.")
+    if "," not in text[0]:
+        return _parse_ngspice_wrdata(text, nodes)
+
     node_set = {node.lower(): node for node in nodes}
     voltages: Dict[str, List[complex]] = {node: [] for node in nodes}
     freqs: List[float] = []
 
-    with path.open("r", newline="") as handle:
-        reader = csv.reader(handle)
-        header = next(reader)
-        header_lower = [col.strip().lower() for col in header]
-        freq_idx = _find_column(header_lower, ["frequency", "freq"])
-        column_map = _resolve_node_columns(header_lower, node_set)
+    reader = csv.reader(text)
+    header = next(reader)
+    header_lower = [col.strip().lower() for col in header]
+    freq_idx = _find_column(header_lower, ["frequency", "freq"])
+    column_map = _resolve_node_columns(header_lower, node_set)
 
-        for row in reader:
-            if not row:
-                continue
-            freqs.append(float(row[freq_idx]))
-            for node, (real_idx, imag_idx) in column_map.items():
-                if imag_idx is None:
-                    voltages[node].append(_parse_complex_value(row[real_idx]))
-                else:
-                    voltages[node].append(
-                        float(row[real_idx]) + 1j * float(row[imag_idx])
-                    )
+    for row in reader:
+        if not row:
+            continue
+        freqs.append(float(row[freq_idx]))
+        for node, (real_idx, imag_idx) in column_map.items():
+            if imag_idx is None:
+                voltages[node].append(_parse_complex_value(row[real_idx]))
+            else:
+                voltages[node].append(
+                    float(row[real_idx]) + 1j * float(row[imag_idx])
+                )
+
+    freqs_arr = np.asarray(freqs, dtype=float)
+    node_arrays = {node: np.asarray(values, dtype=complex) for node, values in voltages.items()}
+    return freqs_arr, node_arrays
+
+
+def _parse_ngspice_wrdata(
+    lines: Sequence[str],
+    nodes: Sequence[str],
+) -> tuple[np.ndarray, Dict[str, np.ndarray]]:
+    freqs: List[float] = []
+    voltages: Dict[str, List[complex]] = {node: [] for node in nodes}
+    vector_count = 1 + len(nodes)
+
+    for line in lines:
+        if not line.strip():
+            continue
+        tokens = line.split()
+        if len(tokens) == vector_count * 3:
+            freqs.append(float(tokens[0]))
+            for idx, node in enumerate(nodes, start=1):
+                base = idx * 3
+                real = float(tokens[base + 1])
+                imag = float(tokens[base + 2])
+                voltages[node].append(real + 1j * imag)
+            continue
+        if len(tokens) == 1 + 2 * len(nodes):
+            freqs.append(float(tokens[0]))
+            for idx, node in enumerate(nodes):
+                real = float(tokens[1 + 2 * idx])
+                imag = float(tokens[1 + 2 * idx + 1])
+                voltages[node].append(real + 1j * imag)
+            continue
+        raise ValueError("Unexpected ngspice wrdata format.")
 
     freqs_arr = np.asarray(freqs, dtype=float)
     node_arrays = {node: np.asarray(values, dtype=complex) for node, values in voltages.items()}
@@ -182,16 +222,31 @@ def export_spice_netlist_ir(
     simulator: str = "ngspice",
     value_mode: str = "snapped",
     measure_nodes: Sequence[str] | None = None,
+    node_map: Dict[str, str] | None = None,
 ) -> str:
     """Export a CircuitIR impedance netlist with AC analysis."""
-    base = export_ir_netlist(circuit, title=circuit.name, canonicalize=True, value_mode=value_mode)
-    lines = [line for line in base.splitlines() if line.strip() and line.strip().lower() != ".end"]
-    lines.append(f"IIMP {port.neg} {port.pos} AC 1")
+    circuit.validate()
+    flat = flatten_circuit(circuit)
+    if flat.subcircuits:
+        raise CircuitIRValidationError("Circuit requires full flattening for SPICE export.")
+    if node_map is None:
+        node_map = _build_spice_node_map(flat)
+    components = _sorted_components(flat.components, node_map, value_mode)
+    lines = [f"* {circuit.name}"]
+    type_counts: Dict[str, int] = {"R": 0, "C": 0, "L": 0}
+    for kind, node_a, node_b, value in components:
+        type_counts[kind] += 1
+        name = f"{kind}{type_counts[kind]}"
+        lines.append(f"{name} {node_a} {node_b} {value}")
+    port_pos = _map_node(port.pos, node_map)
+    port_neg = _map_node(port.neg, node_map)
+    lines.append(f"IIMP {port_neg} {port_pos} AC 1")
     lines.append(
         f".ac {analysis_spec.sweep_type} {analysis_spec.points}"
         f" {analysis_spec.f_start_hz} {analysis_spec.f_stop_hz}"
     )
     nodes = list(measure_nodes) if measure_nodes is not None else [port.pos, port.neg]
+    mapped_nodes = _mapped_measure_nodes(nodes, node_map)
     if simulator.lower() == "ngspice":
         lines.extend(
             [
@@ -199,17 +254,53 @@ def export_spice_netlist_ir(
                 "set filetype=csv",
                 "set noaskquit",
                 "run",
-                f"wrdata {output_csv} frequency " + " ".join(f"v({node})" for node in nodes),
+                f"wrdata {output_csv} frequency " + " ".join(f"v({node})" for node in mapped_nodes),
                 "quit",
                 ".endc",
             ]
         )
     else:
         lines.append(
-            f".print ac format=csv file={output_csv} " + " ".join(f"v({node})" for node in nodes)
+            f".print ac format=csv file={output_csv} " + " ".join(f"v({node})" for node in mapped_nodes)
         )
     lines.append(".end")
     return "\n".join(lines) + "\n"
+
+
+def _map_node(node: str, node_map: Dict[str, str] | None) -> str:
+    mapped = node_map.get(node, node) if node_map else node
+    return _sanitize_node(mapped)
+
+
+def _mapped_measure_nodes(nodes: Sequence[str], node_map: Dict[str, str]) -> List[str]:
+    mapped: List[str] = []
+    seen: set[str] = set()
+    for node in (_map_node(node, node_map) for node in nodes):
+        if node == "0":
+            continue
+        if node in seen:
+            continue
+        seen.add(node)
+        mapped.append(node)
+    return mapped
+
+
+def _build_spice_node_map(circuit: CircuitIR) -> Dict[str, str]:
+    nodes: set[str] = set()
+    for comp in circuit.components:
+        nodes.update([comp.node_a, comp.node_b])
+    for port in circuit.ports:
+        nodes.update([port.pos, port.neg])
+
+    node_map: Dict[str, str] = {}
+    for node in nodes:
+        sanitized = _sanitize_node(node)
+        if sanitized.lower() in {"0", "gnd", "ground"}:
+            mapped = "0"
+        else:
+            mapped = sanitized
+        node_map[node] = mapped
+    return node_map
 
 
 class SpiceRunner(ABC):
