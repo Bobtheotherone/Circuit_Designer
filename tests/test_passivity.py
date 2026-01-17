@@ -19,7 +19,7 @@ def test_passivity_check_passive_impedance():
     report = check_oneport_passivity(freqs, model.eval_freq(freqs), "impedance")
 
     assert report.is_passive
-    assert report.min_real > 0.0
+    assert report.margin > 0.0
 
 
 def test_passivation_adds_min_offset():
@@ -36,7 +36,7 @@ def test_passivation_adds_min_offset():
     assert not report.is_passive
 
     updated, updated_report = passivate_oneport_min_offset(model, freqs, tol=1e-9)
-    expected_delta = -(report.min_real) + report.tol
+    expected_delta = -(report.margin) + report.tol
 
     assert updated.d.real == pytest.approx(model.d.real + expected_delta, rel=1e-8, abs=1e-10)
     assert updated_report.is_passive
@@ -56,7 +56,7 @@ def test_passivity_admittance_and_passivation():
     report = check_oneport_passivity(freqs, model.eval_freq(freqs), "admittance")
 
     assert report.is_passive
-    assert report.min_real > 0.0
+    assert report.margin > 0.0
 
     non_passive = RationalModel(
         poles=np.array([-60.0]),
@@ -70,7 +70,7 @@ def test_passivity_admittance_and_passivation():
     assert not bad_report.is_passive
 
     updated, updated_report = passivate_oneport_min_offset(non_passive, freqs, tol=1e-9)
-    expected_delta = -(bad_report.min_real) + bad_report.tol
+    expected_delta = -(bad_report.margin) + bad_report.tol
 
     assert updated.d.real == pytest.approx(non_passive.d.real + expected_delta, rel=1e-8, abs=1e-10)
     assert updated_report.is_passive

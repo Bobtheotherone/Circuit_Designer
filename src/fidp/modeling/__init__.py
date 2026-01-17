@@ -1,6 +1,13 @@
 """Model extraction utilities."""
 
-from fidp.modeling.fractional_fit import CPEFitResult, fit_cpe, estimate_alpha_profile
+from fidp.modeling.fractional_fit import (
+    CPEFitResult,
+    fit_cpe,
+    estimate_alpha_profile,
+    FractionalFitConfig,
+    FractionalOrderReport,
+    estimate_fractional_order,
+)
 from fidp.modeling.vector_fit import RationalModel, VectorFitConfig, VectorFitResult, vector_fit
 from fidp.modeling.passivity import (
     PassivityReport,
@@ -17,6 +24,9 @@ __all__ = [
     "CPEFitResult",
     "fit_cpe",
     "estimate_alpha_profile",
+    "FractionalFitConfig",
+    "FractionalOrderReport",
+    "estimate_fractional_order",
     "RationalModel",
     "VectorFitConfig",
     "VectorFitResult",

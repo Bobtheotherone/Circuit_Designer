@@ -61,3 +61,23 @@ class PassivityViolationError(EvaluatorError):
 
 class SpiceSimulationError(EvaluatorError):
     """Raised when a SPICE run fails or produces invalid output."""
+
+
+class VectorFitConvergenceError(RuntimeError):
+    """Raised when vector fitting fails to converge."""
+
+    def __init__(self, message: str, diagnostics: dict | None = None) -> None:
+        super().__init__(message)
+        self.diagnostics = diagnostics or {}
+
+
+class InvalidFrequencyGridError(ValueError):
+    """Raised when a frequency grid is invalid or ill-formed."""
+
+
+class IllConditionedSolveError(RuntimeError):
+    """Raised when a linear solve is ill-conditioned or singular."""
+
+
+class OptimizationFailureError(RuntimeError):
+    """Raised when optimization-based enforcement fails."""

@@ -17,6 +17,10 @@ from fidp.errors import (
     EvaluatorNumericalError,
     PassivityViolationError,
     SpiceSimulationError,
+    VectorFitConvergenceError,
+    InvalidFrequencyGridError,
+    IllConditionedSolveError,
+    OptimizationFailureError,
 )
 
 __all__ = [
@@ -42,4 +46,8 @@ __all__ = [
     "EvaluatorNumericalError",
     "PassivityViolationError",
     "SpiceSimulationError",
+    "VectorFitConvergenceError",
+    "InvalidFrequencyGridError",
+    "IllConditionedSolveError",
+    "OptimizationFailureError",
 ]

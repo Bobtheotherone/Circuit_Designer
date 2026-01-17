@@ -5,8 +5,11 @@
 - tests/test_spice_wrdata_parsing.py — covers fidp/evaluators/spice/spice.py ngspice wrdata ASCII parsing variants.
 - tests/test_packaging_pyproject.py — covers pyproject.toml setuptools src-layout configuration.
 - tests/test_fractional_fit.py — covers fidp/modeling/fractional_fit.py CPE fitting, phase-wrap handling, and alpha profiling.
+- tests/test_fractional_order_estimation.py — covers fidp/analysis/fitting/fractional_fit.py variable-order estimation and bootstrap CIs.
 - tests/test_vector_fit.py — covers fidp/modeling/vector_fit.py vector fitting, complex poles, weighting modes, and early stopping.
+- tests/test_vector_fitting_recovery.py — covers fidp/analysis/fitting/vector_fitting.py recovery against golden rational fixture and failure modes.
 - tests/test_passivity.py — covers fidp/modeling/passivity.py one-port passivity checks and passivation for impedance/admittance.
+- tests/test_passivity_enforcement.py — covers fidp/analysis/fitting/passivity enforcement via NNLS/QP and unstable pole rejection.
 - tests/test_macromodel_io.py — covers fidp/modeling/macromodel_io.py JSON round-trip and text formatting.
 - tests/test_search_features.py — covers fidp/search/features.py graph feature extraction and validation.
 - tests/test_search_surrogate.py — covers fidp/search/surrogate.py forward pass shapes and determinism.
@@ -36,3 +39,4 @@
 - tests/test_prima_passivity.py — covers fidp/evaluators/mor/prima.py adaptive PRIMA reduction and passivity checks.
 - tests/test_evaluator_failure_modes.py — covers fidp/evaluators/mna/solver.py, fidp/evaluators/spice/evaluator.py, and fidp/evaluators/mor/evaluator.py failure handling.
 - tests/test_mna_golden_fixture.py — covers fidp/evaluators/mna/descriptor.py regression against golden impedance data.
+- tests/test_symbolic_regression_sanity.py — covers fidp/analysis/fitting/symbolic_regression.py log-law recovery and noise rejection.
