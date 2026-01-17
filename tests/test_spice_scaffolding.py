@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from fidp.circuits import CircuitGraph, Port
+from fidp.circuits import CircuitGraph, CircuitIR, Component, ParamValue, Port, PortDef
 from fidp.evaluators.spice import (
     AcAnalysisSpec,
     export_spice_netlist,
@@ -11,6 +11,7 @@ from fidp.evaluators.spice import (
     NgSpiceRunner,
     XyceRunner,
 )
+from fidp.evaluators.spice.spice import _build_spice_node_map, _build_spice_node_map_graph
 from fidp.errors import SpiceNotAvailableError
 
 
@@ -31,6 +32,38 @@ def test_export_spice_netlist_lines():
     assert ".ac dec 10 1.0 1000.0" in netlist
     assert "wrdata out.csv frequency v(1)" in netlist
     assert "v(0)" not in netlist
+
+
+def test_spice_node_map_collision_graph():
+    circuit = CircuitGraph(ground="0")
+    circuit.add_resistor("a-b", "0", 10.0)
+    circuit.add_resistor("a_b", "0", 20.0)
+    port = Port(pos="a-b", neg="0")
+
+    node_map = _build_spice_node_map_graph(circuit, port)
+
+    mapped = {node: mapped for node, mapped in node_map.items() if mapped != "0"}
+    assert len(set(mapped.values())) == len(mapped)
+    assert node_map["a-b"] == "a_b"
+    assert node_map["a_b"] == "a_b__1"
+
+
+def test_spice_node_map_collision_ir_reserved_base():
+    components = [
+        Component("R1", "R", "a-b", "gnd", ParamValue(10.0)),
+        Component("R2", "R", "a_b", "gnd", ParamValue(10.0)),
+        Component("R3", "R", "a_b__1", "gnd", ParamValue(10.0)),
+    ]
+    ports = [PortDef("P", "a-b", "gnd")]
+    circuit = CircuitIR(name="collision", ports=ports, components=components)
+
+    node_map = _build_spice_node_map(circuit)
+
+    mapped = {node: mapped for node, mapped in node_map.items() if mapped != "0"}
+    assert len(set(mapped.values())) == len(mapped)
+    assert node_map["a-b"] == "a_b"
+    assert node_map["a_b"] == "a_b__2"
+    assert node_map["a_b__1"] == "a_b__1"
 
 
 def test_parse_spice_csv_data():

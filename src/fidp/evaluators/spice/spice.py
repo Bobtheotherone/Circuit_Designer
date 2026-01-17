@@ -129,16 +129,19 @@ def parse_spice_csv(path: Path, port: Port) -> ImpedanceSweep:
 def parse_spice_csv_nodes(path: Path, nodes: Sequence[str]) -> tuple[np.ndarray, Dict[str, np.ndarray]]:
     """Parse CSV output with voltages for multiple nodes."""
     text = path.read_text(encoding="utf-8").splitlines()
-    if not text:
+    data_lines = [
+        line for line in text if line.strip() and not line.lstrip().startswith(("*", "#"))
+    ]
+    if not data_lines:
         raise ValueError("SPICE output file is empty.")
-    if "," not in text[0]:
+    if "," not in data_lines[0]:
         return _parse_ngspice_wrdata(text, nodes)
 
     node_set = {node.lower(): node for node in nodes}
     voltages: Dict[str, List[complex]] = {node: [] for node in nodes}
     freqs: List[float] = []
 
-    reader = csv.reader(text)
+    reader = csv.reader(data_lines)
     header = next(reader)
     header_lower = [col.strip().lower() for col in header]
     freq_idx = _find_column(header_lower, ["frequency", "freq"])
@@ -168,27 +171,38 @@ def _parse_ngspice_wrdata(
     freqs: List[float] = []
     voltages: Dict[str, List[complex]] = {node: [] for node in nodes}
     vector_count = 1 + len(nodes)
+    expected_triple = vector_count * 3
+    expected_compact = 1 + 2 * len(nodes)
 
     for line in lines:
-        if not line.strip():
+        stripped = line.strip()
+        if not stripped:
             continue
-        tokens = line.split()
-        if len(tokens) == vector_count * 3:
-            freqs.append(float(tokens[0]))
+        if stripped.startswith("*") or stripped.startswith("#"):
+            continue
+        tokens = stripped.split()
+        token_count = len(tokens)
+        if token_count == expected_triple:
+            freqs.append(float(tokens[1]))
             for idx, node in enumerate(nodes, start=1):
                 base = idx * 3
                 real = float(tokens[base + 1])
                 imag = float(tokens[base + 2])
                 voltages[node].append(real + 1j * imag)
             continue
-        if len(tokens) == 1 + 2 * len(nodes):
+        if token_count == expected_compact:
             freqs.append(float(tokens[0]))
             for idx, node in enumerate(nodes):
                 real = float(tokens[1 + 2 * idx])
                 imag = float(tokens[1 + 2 * idx + 1])
                 voltages[node].append(real + 1j * imag)
             continue
-        raise ValueError("Unexpected ngspice wrdata format.")
+        raise ValueError(
+            "Unexpected ngspice wrdata format: "
+            f"token_count={token_count}, expected {expected_triple} "
+            f"(3*(1+{len(nodes)})) or {expected_compact} "
+            f"(1+2*{len(nodes)})."
+        )
 
     freqs_arr = np.asarray(freqs, dtype=float)
     node_arrays = {node: np.asarray(values, dtype=complex) for node, values in voltages.items()}
@@ -331,56 +345,82 @@ def _normalize_spice_node(node: str) -> str:
 
 def _build_spice_node_map(circuit: CircuitIR) -> Dict[str, str]:
     nodes: set[str] = set()
+    port_nodes: set[str] = set()
     for comp in circuit.components:
         nodes.update([comp.node_a, comp.node_b])
     for port in circuit.ports:
         nodes.update([port.pos, port.neg])
-
-    if not nodes:
-        raise CircuitIRValidationError("Circuit has no nodes for SPICE grounding.")
-
-    sanitized_map = {node: _sanitize_node(node) for node in nodes}
-    explicit_ground = {
-        node for node, sanitized in sanitized_map.items() if sanitized.lower() in _SPICE_GROUND_NAMES
-    }
-
-    reference_node = None
-    if not explicit_ground:
-        preferred_neg = circuit.ports[0].neg if circuit.ports else None
-        reference_node = _choose_spice_reference_node(nodes, preferred_neg)
-
-    node_map: Dict[str, str] = {}
-    for node, sanitized in sanitized_map.items():
-        if node in explicit_ground or (reference_node is not None and node == reference_node):
-            mapped = "0"
-        else:
-            mapped = sanitized
-        node_map[node] = mapped
-    return node_map
+        port_nodes.update([port.pos, port.neg])
+    preferred_neg = circuit.ports[0].neg if circuit.ports else None
+    return _build_spice_node_map_from_nodes(nodes, preferred_neg, port_nodes)
 
 
 def _build_spice_node_map_graph(circuit: CircuitGraph, port: Port) -> Dict[str, str]:
     nodes = set(circuit.nodes)
     nodes.update([port.pos, port.neg])
+    return _build_spice_node_map_from_nodes(nodes, port.neg, {port.pos, port.neg})
+
+
+def _build_spice_node_map_from_nodes(
+    nodes: Sequence[str],
+    preferred_neg: str | None,
+    port_nodes: set[str],
+) -> Dict[str, str]:
     if not nodes:
         raise CircuitIRValidationError("Circuit has no nodes for SPICE grounding.")
 
-    sanitized_map = {node: _sanitize_node(node) for node in nodes}
+    nodes_sorted = sorted(set(nodes))
+    sanitized_map = {node: _sanitize_node(node) for node in nodes_sorted}
     explicit_ground = {
         node for node, sanitized in sanitized_map.items() if sanitized.lower() in _SPICE_GROUND_NAMES
     }
 
     reference_node = None
     if not explicit_ground:
-        reference_node = _choose_spice_reference_node(nodes, port.neg)
+        reference_node = _choose_spice_reference_node(nodes_sorted, preferred_neg)
 
     node_map: Dict[str, str] = {}
-    for node, sanitized in sanitized_map.items():
-        if node in explicit_ground or (reference_node is not None and node == reference_node):
-            mapped = "0"
-        else:
-            mapped = sanitized
-        node_map[node] = mapped
+    for node in explicit_ground:
+        node_map[node] = "0"
+    if reference_node is not None:
+        node_map[reference_node] = "0"
+
+    base_groups: Dict[str, List[str]] = {}
+    for node in nodes_sorted:
+        if node in node_map:
+            continue
+        base_groups.setdefault(sanitized_map[node], []).append(node)
+
+    reserved_bases = set(base_groups.keys())
+    used_names: set[str] = {"0"}
+    for base in sorted(base_groups.keys()):
+        group_nodes = sorted(
+            base_groups[base],
+            key=lambda node: (0 if node in port_nodes else 1, node),
+        )
+        for idx, node in enumerate(group_nodes):
+            if idx == 0 and base not in used_names:
+                candidate = base
+            else:
+                suffix = 1
+                candidate = f"{base}__{suffix}"
+                while candidate in used_names or candidate in reserved_bases:
+                    suffix += 1
+                    candidate = f"{base}__{suffix}"
+            node_map[node] = candidate
+            used_names.add(candidate)
+
+    collisions: Dict[str, List[str]] = {}
+    for node, mapped in node_map.items():
+        if mapped == "0":
+            continue
+        collisions.setdefault(mapped, []).append(node)
+    collision_details = {name: nodes for name, nodes in collisions.items() if len(nodes) > 1}
+    if collision_details:
+        details = "; ".join(
+            f"{name} <- {sorted(nodes)}" for name, nodes in sorted(collision_details.items())
+        )
+        raise CircuitIRValidationError(f"SPICE node mapping collision detected: {details}")
     return node_map
 
 
