@@ -18,6 +18,8 @@ from fidp.circuits.ops import flatten_circuit
 from fidp.data import ImpedanceSweep
 from fidp.errors import CircuitIRValidationError, SpiceNotAvailableError, SpiceSimulationError
 
+_SPICE_GROUND_NAMES = {"0", "gnd", "ground"}
+
 
 @dataclass(frozen=True)
 class AcAnalysisSpec:
@@ -44,29 +46,29 @@ def export_spice_netlist(
     with frequency and complex node voltages so that Z(s) = V(pos) - V(neg).
     """
     lines: List[str] = ["* FIDP impedance export"]
+    node_map = _build_spice_node_map_graph(circuit, port)
     element_index = 1
 
     for comp in circuit.iter_components():
+        node_a = _map_node(comp.node_a, node_map)
+        node_b = _map_node(comp.node_b, node_map)
         if isinstance(comp, Resistor):
-            lines.append(
-                f"R{element_index} {comp.node_a} {comp.node_b} {comp.resistance_ohms}"
-            )
+            lines.append(f"R{element_index} {node_a} {node_b} {comp.resistance_ohms}")
         elif isinstance(comp, Capacitor):
-            lines.append(
-                f"C{element_index} {comp.node_a} {comp.node_b} {comp.capacitance_f}"
-            )
+            lines.append(f"C{element_index} {node_a} {node_b} {comp.capacitance_f}")
         elif isinstance(comp, Inductor):
-            lines.append(
-                f"L{element_index} {comp.node_a} {comp.node_b} {comp.inductance_h}"
-            )
+            lines.append(f"L{element_index} {node_a} {node_b} {comp.inductance_h}")
         element_index += 1
 
-    lines.append(f"IIMP {port.neg} {port.pos} AC 1")
+    port_pos = _map_node(port.pos, node_map)
+    port_neg = _map_node(port.neg, node_map)
+    lines.append(f"IIMP {port_neg} {port_pos} AC 1")
     lines.append(
         f".ac {analysis_spec.sweep_type} {analysis_spec.points}"
         f" {analysis_spec.f_start_hz} {analysis_spec.f_stop_hz}"
     )
 
+    measure_nodes = _mapped_measure_nodes([port.pos, port.neg], node_map)
     if simulator.lower() == "ngspice":
         lines.extend(
             [
@@ -74,14 +76,14 @@ def export_spice_netlist(
                 "set filetype=csv",
                 "set noaskquit",
                 "run",
-                f"wrdata {output_csv} frequency v({port.pos}) v({port.neg})",
+                f"wrdata {output_csv} frequency " + " ".join(f"v({node})" for node in measure_nodes),
                 "quit",
                 ".endc",
             ]
         )
     else:
         lines.append(
-            f".print ac format=csv file={output_csv} v({port.pos}) v({port.neg})"
+            f".print ac format=csv file={output_csv} " + " ".join(f"v({node})" for node in measure_nodes)
         )
 
     lines.append(".end")
@@ -90,9 +92,36 @@ def export_spice_netlist(
 
 def parse_spice_csv(path: Path, port: Port) -> ImpedanceSweep:
     """Parse a CSV output containing frequency and complex node voltages."""
-    freqs_arr, node_voltages = parse_spice_csv_nodes(path, [port.pos, port.neg])
-    vpos_arr = node_voltages[port.pos]
-    vneg_arr = node_voltages[port.neg]
+    pos_node = _normalize_spice_node(port.pos)
+    neg_node = _normalize_spice_node(port.neg)
+
+    measure_nodes: List[str] = []
+    for node in (pos_node, neg_node):
+        if node == "0" or node in measure_nodes:
+            continue
+        measure_nodes.append(node)
+
+    missing_node: str | None = None
+    try:
+        freqs_arr, node_voltages = parse_spice_csv_nodes(path, measure_nodes)
+    except ValueError:
+        if len(measure_nodes) == 2:
+            try:
+                freqs_arr, node_voltages = parse_spice_csv_nodes(path, [pos_node])
+                missing_node = neg_node
+            except ValueError:
+                freqs_arr, node_voltages = parse_spice_csv_nodes(path, [neg_node])
+                missing_node = pos_node
+        else:
+            raise
+
+    if missing_node == pos_node:
+        pos_node = "0"
+    if missing_node == neg_node:
+        neg_node = "0"
+
+    vpos_arr = _node_voltage(node_voltages, pos_node, freqs_arr)
+    vneg_arr = _node_voltage(node_voltages, neg_node, freqs_arr)
     Z = vpos_arr - vneg_arr
     return ImpedanceSweep(freqs_hz=freqs_arr, Z=Z, meta={"source": str(path)})
 
@@ -285,6 +314,21 @@ def _mapped_measure_nodes(nodes: Sequence[str], node_map: Dict[str, str]) -> Lis
     return mapped
 
 
+def _node_voltage(
+    node_voltages: Dict[str, np.ndarray],
+    node: str,
+    freqs: np.ndarray,
+) -> np.ndarray:
+    if node == "0":
+        return np.zeros_like(freqs, dtype=complex)
+    return node_voltages[node]
+
+
+def _normalize_spice_node(node: str) -> str:
+    sanitized = _sanitize_node(node)
+    return "0" if sanitized.lower() in _SPICE_GROUND_NAMES else sanitized
+
+
 def _build_spice_node_map(circuit: CircuitIR) -> Dict[str, str]:
     nodes: set[str] = set()
     for comp in circuit.components:
@@ -292,15 +336,64 @@ def _build_spice_node_map(circuit: CircuitIR) -> Dict[str, str]:
     for port in circuit.ports:
         nodes.update([port.pos, port.neg])
 
+    if not nodes:
+        raise CircuitIRValidationError("Circuit has no nodes for SPICE grounding.")
+
+    sanitized_map = {node: _sanitize_node(node) for node in nodes}
+    explicit_ground = {
+        node for node, sanitized in sanitized_map.items() if sanitized.lower() in _SPICE_GROUND_NAMES
+    }
+
+    reference_node = None
+    if not explicit_ground:
+        preferred_neg = circuit.ports[0].neg if circuit.ports else None
+        reference_node = _choose_spice_reference_node(nodes, preferred_neg)
+
     node_map: Dict[str, str] = {}
-    for node in nodes:
-        sanitized = _sanitize_node(node)
-        if sanitized.lower() in {"0", "gnd", "ground"}:
+    for node, sanitized in sanitized_map.items():
+        if node in explicit_ground or (reference_node is not None and node == reference_node):
             mapped = "0"
         else:
             mapped = sanitized
         node_map[node] = mapped
     return node_map
+
+
+def _build_spice_node_map_graph(circuit: CircuitGraph, port: Port) -> Dict[str, str]:
+    nodes = set(circuit.nodes)
+    nodes.update([port.pos, port.neg])
+    if not nodes:
+        raise CircuitIRValidationError("Circuit has no nodes for SPICE grounding.")
+
+    sanitized_map = {node: _sanitize_node(node) for node in nodes}
+    explicit_ground = {
+        node for node, sanitized in sanitized_map.items() if sanitized.lower() in _SPICE_GROUND_NAMES
+    }
+
+    reference_node = None
+    if not explicit_ground:
+        reference_node = _choose_spice_reference_node(nodes, port.neg)
+
+    node_map: Dict[str, str] = {}
+    for node, sanitized in sanitized_map.items():
+        if node in explicit_ground or (reference_node is not None and node == reference_node):
+            mapped = "0"
+        else:
+            mapped = sanitized
+        node_map[node] = mapped
+    return node_map
+
+
+def _choose_spice_reference_node(nodes: Sequence[str], preferred_neg: str | None) -> str:
+    if preferred_neg and preferred_neg in nodes:
+        return preferred_neg
+    sanitized_nodes = sorted(
+        ((_sanitize_node(node), node) for node in nodes),
+        key=lambda item: (item[0], item[1]),
+    )
+    if not sanitized_nodes:
+        raise CircuitIRValidationError("Circuit has no nodes for SPICE grounding.")
+    return sanitized_nodes[0][1]
 
 
 class SpiceRunner(ABC):

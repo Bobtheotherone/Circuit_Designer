@@ -176,7 +176,7 @@ def _measure_nodes(ports: list[PortDef]) -> list[str]:
 
 
 def _select_runner(simulator: str):
-    if simulator == "xyce":
+    if simulator.lower() == "xyce":
         return XyceRunner()
     return NgSpiceRunner()
 

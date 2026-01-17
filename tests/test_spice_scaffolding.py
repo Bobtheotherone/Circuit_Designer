@@ -29,7 +29,8 @@ def test_export_spice_netlist_lines():
     assert "L3 1 0 0.001" in netlist
     assert "IIMP 0 1 AC 1" in netlist
     assert ".ac dec 10 1.0 1000.0" in netlist
-    assert "wrdata out.csv frequency v(1) v(0)" in netlist
+    assert "wrdata out.csv frequency v(1)" in netlist
+    assert "v(0)" not in netlist
 
 
 def test_parse_spice_csv_data():
@@ -37,7 +38,7 @@ def test_parse_spice_csv_data():
     sweep = parse_spice_csv(data_path, Port(pos="1", neg="0"))
 
     assert np.allclose(sweep.freqs_hz, np.array([1.0, 10.0]))
-    assert np.allclose(sweep.Z, np.array([1.5 + 3.5j, 1.0 + 0.0j]))
+    assert np.allclose(sweep.Z, np.array([2.0 + 3.0j, 1.0 + 0.0j]))
 
 
 def test_ngspice_runner_command_and_parse(tmp_path: Path, monkeypatch):
@@ -49,7 +50,7 @@ def test_ngspice_runner_command_and_parse(tmp_path: Path, monkeypatch):
 
     output_path = tmp_path / "spice_output.csv"
     output_path.write_text(
-        "frequency,v(1)_real,v(1)_imag,v(0)_real,v(0)_imag\n1.0,2.0,0.0,0.0,0.0\n",
+        "frequency,v(1)_real,v(1)_imag\n1.0,2.0,0.0\n",
         encoding="utf-8",
     )
 

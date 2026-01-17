@@ -6,6 +6,8 @@ import numpy as np
 
 from fidp.circuits.ir import CircuitIR, Component, ParamValue, PortDef
 from fidp.evaluators.spice import SpiceEvaluator
+from fidp.evaluators.spice.evaluator import _select_runner
+from fidp.evaluators.spice.spice import NgSpiceRunner, XyceRunner
 from fidp.evaluators.types import EvalRequest, FrequencyGridSpec
 
 
@@ -185,3 +187,8 @@ def test_spice_runner_contract_fake_ngspice(monkeypatch, tmp_path: Path) -> None
         spice_result = spice.evaluate(circuit, request_spice)
         assert spice_result.status == "ok"
         assert np.allclose(spice_result.Z, expected, rtol=1e-6, atol=1e-8)
+
+
+def test_select_runner_case_insensitive() -> None:
+    assert isinstance(_select_runner("NGSPICE"), NgSpiceRunner)
+    assert isinstance(_select_runner("XyCe"), XyceRunner)
